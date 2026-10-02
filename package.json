@@ -1,0 +1,17 @@
+{
+  "name": "kfdisplay-sync",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Receives sales and menu changes from the Comfortably Yum register tablet and writes them to KFDisplay",
+  "type": "module",
+  "main": "src/main.js",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "node --test test/apply.test.js",
+    "make-key": "node tools/make-key.js"
+  },
+  "dependencies": {
+    "mssql": "^12.7.2"
+  }
+}
