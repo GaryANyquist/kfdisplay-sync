@@ -17,8 +17,12 @@ tablet (SQLite + outbox) --HTTP over truck Wi-Fi--> this service --> SQL Server:
 
 The tablet's own schema (see `setup/02-replace-schema.sql`):
 `categories`, `items`, `modifier_groups`, `modifier_options`,
-`item_modifier_groups`, `discounts`, `orders`, `order_lines`,
-`order_line_modifiers`.
+`item_modifier_groups`, `discounts`, `auto_discounts`, `auto_discount_targets`,
+`shifts` (drawers), `orders`, `order_lines`, `order_line_modifiers`.
+
+- **Prepaid events:** `shifts.prepaid = 1` marks a drawer opened as a prepaid
+  event. Join a sale to its drawer with `orders.shift_id = shifts.id`. Prepaid
+  sales also have `orders.tender = 'prepaid'`.
 
 - Money is **integer cents** (`price = 1100` is $11.00). Flags are 0/1.
 - `*_at` columns are **UTC**. Convert for display, e.g.

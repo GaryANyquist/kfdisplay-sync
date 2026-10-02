@@ -186,3 +186,18 @@ test('order lines carry their automatic discount', async () => {
   const lineInsert = db.calls.find((c) => c.sql.startsWith('INSERT INTO dbo.order_lines'));
   assert.deepEqual([p(lineInsert).auto_discount_name, p(lineInsert).auto_discount_amount], ['Burger Tuesday', 100]);
 });
+
+test('a drawer upserts with its prepaid flag, and is never deleted', async () => {
+  const db = fakeDb();
+  await applyChange(db, {
+    entity: 'shift', id: 'sh1', version: 1, op: 'upsert',
+    data: { opened_at: '2026-10-03T15:00:00.000Z', starting_cash: 0, closed_at: null, counted_cash: null,
+      over_short: null, note: null, prepaid: 1 },
+  });
+  assert.match(db.calls[0].sql, /^MERGE dbo\.shifts/);
+  assert.equal(p(db.calls[0]).prepaid, 1);
+  assert.ok(p(db.calls[0]).opened_at instanceof Date);
+  const del = fakeDb();
+  await applyChange(del, { entity: 'shift', id: 'sh1', version: 2, op: 'delete' });
+  assert.equal(del.calls.length, 0);
+});

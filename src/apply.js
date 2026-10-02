@@ -50,6 +50,14 @@ export const TABLES = {
     key: ['discount_id', 'target_type', 'target_id'],
     cols: { discount_id: T.id, target_type: T.text, target_id: T.id },
   },
+  shifts: {
+    key: ['id'],
+    cols: {
+      id: T.id, opened_at: T.date, starting_cash: T.int, closed_at: T.date, counted_cash: T.int,
+      over_short: T.int, note: T.long, prepaid: T.int,
+    },
+    synced: true,
+  },
   orders: {
     key: ['id'],
     cols: {
@@ -86,7 +94,7 @@ const MENU_TABLES = [
   'item_modifier_groups', 'modifier_options', 'modifier_groups', 'items', 'categories', 'discounts',
 ];
 
-export const ENTITIES = ['catalog', 'category', 'item', 'modifier_group', 'discount', 'auto_discount', 'order'];
+export const ENTITIES = ['catalog', 'category', 'item', 'modifier_group', 'discount', 'auto_discount', 'shift', 'order'];
 
 /** Checks and converts one value; throws a message the tablet shows if it's wrong. */
 function value(table, col, type, raw) {
@@ -201,6 +209,11 @@ export async function applyChange(db, change) {
       await upsert(db, 'modifier_groups', row);
       for (const o of list(data, 'options')) await insert(db, 'modifier_options', { ...o, group_id: id });
       return;
+
+    case 'shift':
+      // Drawers are kept like sales: clearing the tablet's history doesn't remove them here.
+      if (op === 'delete') return;
+      return upsert(db, 'shifts', row);
 
     case 'order':
       // The tablet only "deletes" sales by clearing its own history; the PC keeps them.

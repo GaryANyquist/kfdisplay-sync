@@ -132,6 +132,20 @@ CREATE TABLE dbo.auto_discount_targets (
 );
 
 -- ---- sales --------------------------------------------------------------
+-- A drawer (shift). orders.shift_id points here; prepaid = 1 is a prepaid event.
+CREATE TABLE dbo.shifts (
+    id             nvarchar(64)   NOT NULL PRIMARY KEY,
+    opened_at      datetime2(3)   NOT NULL,
+    starting_cash  int            NOT NULL DEFAULT 0,
+    closed_at      datetime2(3)   NULL,
+    counted_cash   int            NULL,
+    over_short     int            NULL,
+    note           nvarchar(1000) NULL,
+    -- 1 = prepaid event: menu items rang up at $0.00 on this drawer
+    prepaid        int            NOT NULL DEFAULT 0,
+    synced_at      datetime2(3)   NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
 CREATE TABLE dbo.orders (
     id               nvarchar(64)   NOT NULL PRIMARY KEY,
     number           int            NOT NULL,
