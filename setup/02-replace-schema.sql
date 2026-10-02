@@ -72,6 +72,8 @@ CREATE TABLE dbo.items (
     image               nvarchar(1000) NULL,
     show_on_menu_board  int           NOT NULL DEFAULT 0,
     out_of_stock        int           NOT NULL DEFAULT 0,
+    -- For the KFDisplay app (menu board); the register doesn't use it.
+    description         nvarchar(1000) NULL,
     synced_at           datetime2(3)  NOT NULL DEFAULT SYSUTCDATETIME()
 );
 CREATE INDEX idx_items_category ON dbo.items(category_id);

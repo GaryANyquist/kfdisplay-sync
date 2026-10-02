@@ -201,3 +201,14 @@ test('a drawer upserts with its prepaid flag, and is never deleted', async () =>
   await applyChange(del, { entity: 'shift', id: 'sh1', version: 2, op: 'delete' });
   assert.equal(del.calls.length, 0);
 });
+
+test('an item carries its description', async () => {
+  const db = fakeDb();
+  await applyChange(db, {
+    entity: 'item', id: 'm', version: 1, op: 'upsert',
+    data: { name: 'Swedish Meatballs', price: 1200, category_id: 'c', color: '#CC0023', taxable: 0, archived: 0,
+      sort_order: 0, show_on_menu_board: 1, out_of_stock: 0, description: 'Two meatballs in gravy', modifier_groups: [] },
+  });
+  const merge = db.calls.find((c) => c.sql.startsWith('MERGE dbo.items'));
+  assert.equal(p(merge).description, 'Two meatballs in gravy');
+});

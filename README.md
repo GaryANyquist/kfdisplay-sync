@@ -20,6 +20,9 @@ The tablet's own schema (see `setup/02-replace-schema.sql`):
 `item_modifier_groups`, `discounts`, `auto_discounts`, `auto_discount_targets`,
 `shifts` (drawers), `orders`, `order_lines`, `order_line_modifiers`.
 
+- **Item descriptions:** `items.description` is for the KFDisplay app (menu
+  board). It is edited on the tablet (Items → Edit item) and synced; the
+  register itself doesn't show it.
 - **Prepaid events:** `shifts.prepaid = 1` marks a drawer opened as a prepaid
   event. Join a sale to its drawer with `orders.shift_id = shifts.id`. Prepaid
   sales also have `orders.tender = 'prepaid'`.

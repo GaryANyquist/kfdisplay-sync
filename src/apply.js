@@ -19,7 +19,7 @@ export const TABLES = {
     cols: {
       id: T.id, name: T.text, price: T.int, category_id: T.id, color: T.text, taxable: T.int,
       archived: T.int, sort_order: T.int, source_key: T.text, image: T.long,
-      show_on_menu_board: T.int, out_of_stock: T.int,
+      show_on_menu_board: T.int, out_of_stock: T.int, description: T.long,
     },
     synced: true,
   },
