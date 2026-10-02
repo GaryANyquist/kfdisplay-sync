@@ -96,7 +96,7 @@ test('the catalog replaces every menu table', async () => {
     },
   });
   const deletes = db.calls.filter((c) => c.sql.startsWith('DELETE')).map((c) => c.sql);
-  assert.equal(deletes.length, 6);
+  assert.equal(deletes.length, 8);
   const inserts = db.calls.filter((c) => c.sql.startsWith('INSERT')).map((c) => c.sql.split(' (')[0]);
   assert.deepEqual(inserts, ['INSERT INTO dbo.categories', 'INSERT INTO dbo.items']);
 });
@@ -151,4 +151,38 @@ test('the HTTP service end to end, with a fake database', async () => {
   } finally {
     server.close();
   }
+});
+
+test('an automatic discount replaces its targets, with dates', async () => {
+  const db = fakeDb();
+  await applyChange(db, {
+    entity: 'auto_discount', id: 'a1', version: 1, op: 'upsert',
+    data: { name: 'Burger Tuesday', type: 'amount', value: 100, active: 1, sort_order: 0, starts_on: '2026-10-01', ends_on: '2026-10-31',
+      targets: [{ target_type: 'category', target_id: 'c1' }, { target_type: 'item', target_id: 'i9' }] },
+  });
+  assert.match(db.calls[0].sql, /^DELETE FROM dbo\.auto_discount_targets WHERE discount_id = @id;$/);
+  assert.match(db.calls[1].sql, /^MERGE dbo\.auto_discounts/);
+  assert.deepEqual([p(db.calls[1]).starts_on, p(db.calls[1]).ends_on], ['2026-10-01', '2026-10-31']);
+  assert.deepEqual(db.calls.slice(2).map((c) => [p(c).discount_id, p(c).target_type, p(c).target_id]),
+    [['a1', 'category', 'c1'], ['a1', 'item', 'i9']]);
+});
+
+test('deleting an automatic discount removes its targets first', async () => {
+  const db = fakeDb();
+  await applyChange(db, { entity: 'auto_discount', id: 'a1', version: 2, op: 'delete' });
+  assert.deepEqual(db.calls.map((c) => c.sql.split(' WHERE')[0]), ['DELETE FROM dbo.auto_discount_targets', 'DELETE FROM dbo.auto_discounts']);
+});
+
+test('order lines carry their automatic discount', async () => {
+  const db = fakeDb();
+  await applyChange(db, {
+    entity: 'order', id: 'o2', version: 1, op: 'upsert',
+    data: { number: 1, created_at: '2026-10-15T18:00:00.000Z', shift_id: 's', subtotal: 1100, discount_amount: 100, tax: 0, tip: 0,
+      total: 1000, payment_type: 'cash', payment_amount: 1000, status: 'completed',
+      lines: [{ uid: 'l1', item_id: 'i', name: 'Burger', base_price: 1100, qty: 1, taxable: 0, line_index: 0,
+        auto_discount_id: 'a1', auto_discount_name: 'Burger Tuesday', auto_discount_type: 'amount', auto_discount_value: 100,
+        auto_discount_amount: 100, modifiers: [] }] },
+  });
+  const lineInsert = db.calls.find((c) => c.sql.startsWith('INSERT INTO dbo.order_lines'));
+  assert.deepEqual([p(lineInsert).auto_discount_name, p(lineInsert).auto_discount_amount], ['Burger Tuesday', 100]);
 });

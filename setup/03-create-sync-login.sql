@@ -28,6 +28,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.modifier_groups      TO register_syn
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.modifier_options     TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.item_modifier_groups TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.discounts            TO register_sync;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.auto_discounts       TO register_sync;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.auto_discount_targets TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.orders               TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.order_lines          TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.order_line_modifiers TO register_sync;

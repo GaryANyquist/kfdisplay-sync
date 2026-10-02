@@ -33,7 +33,23 @@ export const TABLES = {
     cols: { id: T.id, group_id: T.id, name: T.text, price_delta: T.int, sort_order: T.int, default_on: T.int },
   },
   item_modifier_groups: { key: ['item_id', 'group_id'], cols: { item_id: T.id, group_id: T.id, sort_order: T.int } },
-  discounts: { key: ['id'], cols: { id: T.id, name: T.text, type: T.text, value: T.float }, synced: true },
+  discounts: {
+    key: ['id'],
+    cols: { id: T.id, name: T.text, type: T.text, value: T.float, starts_on: T.text, ends_on: T.text },
+    synced: true,
+  },
+  auto_discounts: {
+    key: ['id'],
+    cols: {
+      id: T.id, name: T.text, type: T.text, value: T.float, active: T.int, sort_order: T.int,
+      starts_on: T.text, ends_on: T.text,
+    },
+    synced: true,
+  },
+  auto_discount_targets: {
+    key: ['discount_id', 'target_type', 'target_id'],
+    cols: { discount_id: T.id, target_type: T.text, target_id: T.id },
+  },
   orders: {
     key: ['id'],
     cols: {
@@ -52,6 +68,8 @@ export const TABLES = {
     cols: {
       uid: T.id, order_id: T.id, item_id: T.id, name: T.text, base_price: T.int, qty: T.int,
       taxable: T.int, note: T.long, line_index: T.int,
+      auto_discount_id: T.id, auto_discount_name: T.text, auto_discount_type: T.text,
+      auto_discount_value: T.float, auto_discount_amount: T.int,
     },
   },
   order_line_modifiers: {
@@ -63,9 +81,12 @@ export const TABLES = {
   },
 };
 
-const MENU_TABLES = ['item_modifier_groups', 'modifier_options', 'modifier_groups', 'items', 'categories', 'discounts'];
+const MENU_TABLES = [
+  'auto_discount_targets', 'auto_discounts',
+  'item_modifier_groups', 'modifier_options', 'modifier_groups', 'items', 'categories', 'discounts',
+];
 
-export const ENTITIES = ['catalog', 'category', 'item', 'modifier_group', 'discount', 'order'];
+export const ENTITIES = ['catalog', 'category', 'item', 'modifier_group', 'discount', 'auto_discount', 'order'];
 
 /** Checks and converts one value; throws a message the tablet shows if it's wrong. */
 function value(table, col, type, raw) {
@@ -154,6 +175,13 @@ export async function applyChange(db, change) {
     case 'discount':
       if (op === 'delete') return del(db, 'DELETE FROM dbo.discounts WHERE id = @id;', id);
       return upsert(db, 'discounts', row);
+
+    case 'auto_discount':
+      await del(db, 'DELETE FROM dbo.auto_discount_targets WHERE discount_id = @id;', id);
+      if (op === 'delete') return del(db, 'DELETE FROM dbo.auto_discounts WHERE id = @id;', id);
+      await upsert(db, 'auto_discounts', row);
+      for (const t of list(data, 'targets')) await insert(db, 'auto_discount_targets', { ...t, discount_id: id });
+      return;
 
     case 'item':
       await del(db, 'DELETE FROM dbo.item_modifier_groups WHERE item_id = @id;', id);

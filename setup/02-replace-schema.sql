@@ -107,7 +107,28 @@ CREATE TABLE dbo.discounts (
     name       nvarchar(200) NOT NULL,
     type       nvarchar(10)  NOT NULL CHECK (type IN (N'percent', N'amount')),
     value      float         NOT NULL DEFAULT 0,
+    starts_on  nvarchar(10)  NULL,
+    ends_on    nvarchar(10)  NULL,
     synced_at  datetime2(3)  NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
+CREATE TABLE dbo.auto_discounts (
+    id          nvarchar(64)  NOT NULL PRIMARY KEY,
+    name        nvarchar(200) NOT NULL,
+    type        nvarchar(10)  NOT NULL CHECK (type IN (N'percent', N'amount')),
+    value       float         NOT NULL DEFAULT 0,
+    active      int           NOT NULL DEFAULT 1,
+    sort_order  int           NOT NULL DEFAULT 0,
+    starts_on   nvarchar(10)  NULL,
+    ends_on     nvarchar(10)  NULL,
+    synced_at   datetime2(3)  NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
+CREATE TABLE dbo.auto_discount_targets (
+    discount_id  nvarchar(64) NOT NULL,
+    target_type  nvarchar(10) NOT NULL CHECK (target_type IN (N'item', N'category')),
+    target_id    nvarchar(64) NOT NULL,
+    PRIMARY KEY (discount_id, target_type, target_id)
 );
 
 -- ---- sales --------------------------------------------------------------
@@ -157,7 +178,12 @@ CREATE TABLE dbo.order_lines (
     qty         int            NOT NULL,
     taxable     int            NOT NULL DEFAULT 1,
     note        nvarchar(1000) NULL,
-    line_index  int            NOT NULL DEFAULT 0
+    line_index  int            NOT NULL DEFAULT 0,
+    auto_discount_id      nvarchar(64)  NULL,
+    auto_discount_name    nvarchar(200) NULL,
+    auto_discount_type    nvarchar(10)  NULL,
+    auto_discount_value   float         NULL,
+    auto_discount_amount  int           NOT NULL DEFAULT 0
 );
 CREATE INDEX idx_lines_order ON dbo.order_lines(order_id);
 
