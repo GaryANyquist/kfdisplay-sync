@@ -123,6 +123,7 @@ CREATE TABLE dbo.auto_discounts (
     sort_order  int           NOT NULL DEFAULT 0,
     starts_on   nvarchar(10)  NULL,
     ends_on     nvarchar(10)  NULL,
+    sale_price  int           NULL,  -- a sale price in cents (type amount, value 0); see 07
     synced_at   datetime2(3)  NOT NULL DEFAULT SYSUTCDATETIME()
 );
 
