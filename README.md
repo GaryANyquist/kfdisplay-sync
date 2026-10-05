@@ -59,12 +59,16 @@ Do these in order, in SQL Server Management Studio (connected to
    ```
 5. **Configure**: copy `.env.example` to `.env`. Fill in `SYNC_KEY` (the key
    from step 4) and `KFDISPLAY_PASSWORD` (the password from step 3).
+   It connects on port 1433; use `KFDISPLAY_INSTANCE` instead only if the SQL
+   Server Browser service is running (it is disabled on Gary's PC).
 6. **Allow the tablet in**: in an administrator terminal:
    ```
-   netsh advfirewall firewall add rule name="KFDisplay sync" dir=in action=allow protocol=TCP localport=8787 profile=private
+   netsh advfirewall firewall add rule name="KFDisplay sync" dir=in action=allow protocol=TCP localport=8787 profile=private,domain
    ```
    The truck Wi-Fi must be a **Private** network in Windows (Settings →
-   Network → Wi-Fi → the network → Private).
+   Network → Wi-Fi → the network → Private). On an office (domain) network
+   the rule needs the domain profile too, which the command above includes.
+   To fix an existing rule: `Set-NetFirewallRule -DisplayName "KFDisplay sync" -Profile Domain,Private`.
 7. **Give the PC a fixed address** on the Starlink router (DHCP reservation),
    or the tablet loses track of it after a restart. `ipconfig` shows the
    current IPv4 address.
