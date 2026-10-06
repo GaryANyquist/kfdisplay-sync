@@ -15,7 +15,7 @@ tablet (SQLite + outbox) --HTTP over truck Wi-Fi--> this service --> SQL Server:
 
 ## Kitchen status (the other direction)
 
-The Kitchen Display app (`C:SourceKitchenDisplay`) writes `orders.order_up_at` (ready) and
+The Kitchen Display app (`C:\Source\KitchenDisplay`) writes `orders.order_up_at` (ready) and
 `orders.completed_at` (bumped). The tablet asks for them: `POST /v1/kitchen-status` with `{ "ids": [...] }`
 returns `{ "orders": [{ id, order_up_at, completed_at }] }` (ISO UTC, null when not set). The tablet calls it every
 10 seconds for its orders of the last 24 hours and keeps the answer in its own `kitchen_status` table. The sync login
