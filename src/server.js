@@ -4,6 +4,8 @@
  *
  *   GET  /v1/health  -> { ok, database }
  *   POST /v1/sync    { changes: [...] } -> { applied: [...], failed: [...] }
+ *   POST /v1/photos/check { names: [...] } -> { missing: [...] }   which menu-board photos this PC lacks
+ *   POST /v1/photos { name, data }          -> { result }            saves one photo (base64) into PHOTO_DIR
  *   POST /v1/kitchen-status { ids: [...] } -> { orders: [{ id, order_up_at, completed_at }] }
  *                    what the Kitchen Display did with those orders; the tablet pulls it
  *
@@ -16,6 +18,7 @@ import http from 'node:http';
 
 import { applyChange } from './apply.js';
 import { databaseName, inTransaction, kitchenStatus } from './db.js';
+import { missingPhotos, savePhoto } from './photos.js';
 
 const MAX_BODY = 10 * 1024 * 1024;
 const MAX_CHANGES = 200;
@@ -67,6 +70,7 @@ export async function applyBatch(changes, run) {
 export function createServer(cfg, deps = {}) {
   const run = deps.run ?? ((c) => inTransaction(cfg.sql, (db) => applyChange(db, c)));
   const dbName = deps.databaseName ?? (() => databaseName(cfg.sql));
+  const photoDir = cfg.photoDir ?? 'C:\\images';
   const kitchen = deps.kitchenStatus ?? ((ids) => kitchenStatus(cfg.sql, ids));
 
   return http.createServer(async (req, res) => {
@@ -108,6 +112,27 @@ export function createServer(cfg, deps = {}) {
           return send(res, 400, { error: `ids must be a list of at most ${MAX_IDS} order ids` });
         }
         return send(res, 200, { orders: await kitchen(ids) });
+      }
+
+      if (req.method === 'POST' && (req.url === '/v1/photos/check' || req.url === '/v1/photos')) {
+        let body;
+        try {
+          body = JSON.parse(await readBody(req));
+        } catch (err) {
+          return send(res, err.status ?? 400, { error: err.status ? err.message : 'body is not JSON' });
+        }
+        if (req.url === '/v1/photos/check') {
+          const names = body?.names;
+          if (!Array.isArray(names) || names.length > MAX_IDS) return send(res, 400, { error: 'names must be a list' });
+          return send(res, 200, { missing: await missingPhotos(photoDir, names) });
+        }
+        try {
+          const result = await savePhoto(photoDir, body?.name, body?.data);
+          if (result === 'saved') console.log(`${new Date().toISOString()} photo saved: ${body.name}`);
+          return send(res, 200, { result });
+        } catch (err) {
+          return send(res, 400, { error: String(err?.message ?? err) });
+        }
       }
 
       return send(res, 404, { error: 'not found' });

@@ -73,5 +73,7 @@ export function loadConfig(rawEnv = process.env, fileEnv = loadDotEnv()) {
     syncKey,
     port: int(env.SYNC_PORT, 8787),
     host: env.SYNC_HOST || '0.0.0.0',
+    // Where KFIDisplay reads item photos from; the tablet sends missing ones here.
+    photoDir: env.PHOTO_DIR || 'C:\\images',
   };
 }

@@ -22,6 +22,17 @@ returns `{ "orders": [{ id, order_up_at, completed_at }] }` (ISO UTC, null when 
 only needs SELECT on `orders` for this (it already has it). `apply.js` never writes these two columns, so a re-sync of
 an order can't undo what the kitchen did.
 
+## Menu-board photos (tablet → this PC)
+
+KFIDisplay shows each item's photo from `C:\images` on this PC, found by the file name in `items.image`. A photo
+downloaded from Wix (or taken on the tablet) has a name like `it_160-wix-1791315247281.jpg` and exists only on the
+tablet, so the tablet sends it: `POST /v1/photos/check` with `{ "names": [...] }` returns the ones this PC lacks, and
+`POST /v1/photos` with `{ "name", "data" }` (base64) saves one. When a photo changes on Wix the tablet downloads it
+under a new name, the PC lacks that name, and the tablet sends it, so KFIDisplay follows with no one copying files.
+Only the tablet's menu-board items are checked. Files are only ever added, never replaced; the name must be a plain
+`.jpg/.jpeg/.png/.gif` name and the bytes must really be an image (5 MB max). The folder is `PHOTO_DIR` in `.env`
+(default `C:\images`). The service account needs write access to it (SYSTEM has it by default).
+
 ## What ends up in KFDisplay
 
 The tablet's own schema (see `setup/02-replace-schema.sql`):

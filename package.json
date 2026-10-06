@@ -8,7 +8,7 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node src/main.js",
-    "test": "node --test test/apply.test.js",
+    "test": "node --test test/apply.test.js test/photos.test.js",
     "make-key": "node tools/make-key.js"
   },
   "dependencies": {
