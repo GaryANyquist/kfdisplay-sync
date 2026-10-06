@@ -4,6 +4,8 @@
  *
  *   GET  /v1/health  -> { ok, database }
  *   POST /v1/sync    { changes: [...] } -> { applied: [...], failed: [...] }
+ *   POST /v1/kitchen-status { ids: [...] } -> { orders: [{ id, order_up_at, completed_at }] }
+ *                    what the Kitchen Display did with those orders; the tablet pulls it
  *
  * Both need "Authorization: Bearer <SYNC_KEY>". Each change is applied in its
  * own transaction, so one bad change can't block or half-apply the others.
@@ -13,10 +15,11 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 
 import { applyChange } from './apply.js';
-import { databaseName, inTransaction } from './db.js';
+import { databaseName, inTransaction, kitchenStatus } from './db.js';
 
 const MAX_BODY = 10 * 1024 * 1024;
 const MAX_CHANGES = 200;
+const MAX_IDS = 500;
 
 const digest = (s) => createHash('sha256').update(s).digest();
 
@@ -64,6 +67,7 @@ export async function applyBatch(changes, run) {
 export function createServer(cfg, deps = {}) {
   const run = deps.run ?? ((c) => inTransaction(cfg.sql, (db) => applyChange(db, c)));
   const dbName = deps.databaseName ?? (() => databaseName(cfg.sql));
+  const kitchen = deps.kitchenStatus ?? ((ids) => kitchenStatus(cfg.sql, ids));
 
   return http.createServer(async (req, res) => {
     try {
@@ -90,6 +94,20 @@ export function createServer(cfg, deps = {}) {
             (result.failed.length ? ` (${result.failed.map((f) => `${f.entity} ${f.id}: ${f.error}`).join('; ')})` : '')
         );
         return send(res, 200, result);
+      }
+
+      if (req.method === 'POST' && req.url === '/v1/kitchen-status') {
+        let body;
+        try {
+          body = JSON.parse(await readBody(req));
+        } catch (err) {
+          return send(res, err.status ?? 400, { error: err.status ? err.message : 'body is not JSON' });
+        }
+        const ids = body?.ids;
+        if (!Array.isArray(ids) || ids.length > MAX_IDS || ids.some((i) => typeof i !== 'string' || !i || i.length > 64)) {
+          return send(res, 400, { error: `ids must be a list of at most ${MAX_IDS} order ids` });
+        }
+        return send(res, 200, { orders: await kitchen(ids) });
       }
 
       return send(res, 404, { error: 'not found' });

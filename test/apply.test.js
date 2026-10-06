@@ -128,8 +128,10 @@ test('the key must match exactly', () => {
 test('the HTTP service end to end, with a fake database', async () => {
   const key = 'test-key-that-is-long-enough-123';
   const seen = [];
+  const kitchenAsked = [];
   const server = createServer({ syncKey: key }, {
     run: async (c) => { seen.push(c.id); },
+    kitchenStatus: async (ids) => { kitchenAsked.push(ids); return [{ id: 'o1', order_up_at: '2026-10-06T16:10:00.000Z', completed_at: null }]; },
     databaseName: async () => 'KFDisplay',
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -148,6 +150,18 @@ test('the HTTP service end to end, with a fake database', async () => {
     assert.deepEqual(seen, ['o1']);
     const bad = await fetch(`${base}/v1/sync`, { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: '{' });
     assert.equal(bad.status, 400);
+
+    const ks = await fetch(`${base}/v1/kitchen-status`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ['o1', 'o2'] }),
+    });
+    assert.deepEqual(await ks.json(), { orders: [{ id: 'o1', order_up_at: '2026-10-06T16:10:00.000Z', completed_at: null }] });
+    assert.deepEqual(kitchenAsked, [['o1', 'o2']]);
+    const ksBad = await fetch(`${base}/v1/kitchen-status`, { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: JSON.stringify({ ids: [1] }) });
+    assert.equal(ksBad.status, 400);
+    const ksNoKey = await fetch(`${base}/v1/kitchen-status`, { method: 'POST', body: '{}' });
+    assert.equal(ksNoKey.status, 401);
   } finally {
     server.close();
   }

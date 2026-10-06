@@ -50,3 +50,24 @@ export async function databaseName(config) {
   const r = await pool.request().query('SELECT DB_NAME() AS db');
   return r.recordset[0]?.db ?? '';
 }
+
+/**
+ * What the Kitchen Display has done with these orders: ready (order_up_at) and bumped
+ * (completed_at), as ISO UTC strings or null. Read-only; the tablet pulls this.
+ */
+export async function kitchenStatus(config, ids) {
+  if (ids.length === 0) return [];
+  const pool = await getPool(config);
+  const req = pool.request();
+  const list = ids
+    .map((id, i) => {
+      req.input(`i${i}`, sql.NVarChar(64), id);
+      return `@i${i}`;
+    })
+    .join(',');
+  const r = await req.query(
+    `SELECT id, order_up_at, completed_at FROM dbo.orders WHERE id IN (${list})`
+  );
+  const iso = (d) => (d ? new Date(d).toISOString() : null);
+  return r.recordset.map((o) => ({ id: o.id, order_up_at: iso(o.order_up_at), completed_at: iso(o.completed_at) }));
+}
