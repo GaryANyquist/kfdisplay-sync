@@ -105,6 +105,14 @@ From an administrator terminal:
 schtasks /Create /TN "KFDisplay sync" /TR "C:\Source\kfdisplay-sync\start-sync.cmd" /SC ONSTART /RU SYSTEM /RL HIGHEST /F
 ```
 
+Then, in an **administrator PowerShell**, take off Windows' default "stop the task if it runs longer
+than 3 days" (a plain `schtasks /Create` gets it; around 2026-10-10 it silently stopped this service and the
+other one, three days after their last start) and have it restarted if it ever fails:
+
+```powershell
+$t = Get-ScheduledTask -TaskName 'KFDisplay sync'; $t.Settings.ExecutionTimeLimit = 'PT0S'; $t.Settings.RestartCount = 999; $t.Settings.RestartInterval = 'PT1M'; Set-ScheduledTask -InputObject $t
+```
+
 Output goes to `logs\sync.log`: one line per batch, with counts and any
 refused change. Sale contents are never logged.
 
