@@ -40,8 +40,10 @@ tablet's schema, times ISO UTC. Each sale has `orders.register_id` (the register
 
 The service announces itself on the local network with mDNS (`_annaware-sync._tcp`, "KFDisplay PC (<computer name>)",
 `src/announce.js`), so a register's Settings → KFDisplay sync → **Find KFDisplay PC** fills in the address. It tells
-only the name and port; the sync key is still needed. Windows must let node.exe receive UDP 5353: `install-startup.ps1`
-adds the "KFDisplay sync (find)" firewall rule (run it again on a PC set up before 2026-10-22).
+only the name and port; the sync key is still needed. Where the access point doesn't pass multicast between Wi-Fi and
+wired, the register also broadcasts `annaware-find annaware-sync` on UDP 8789 and the service answers it directly.
+Windows must let node.exe receive UDP 5353 and 8789: `install-startup.ps1` adds the "KFDisplay sync (find)" firewall
+rule (run it again on a PC set up before this).
 
 ## Menu-board photos (tablet → this PC)
 
