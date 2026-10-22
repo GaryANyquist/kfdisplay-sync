@@ -1,7 +1,7 @@
 # kfdisplay-sync
 
 Receives sales and menu changes from the Comfortably Yum register tablet and
-writes them into the **KFDisplay** database on the truck PC.
+writes them into the **KFDisplay** database on the main PC.
 
 The tablet keeps a queue (its `sync_outbox` table). Every sale, refund, pager
 number and menu edit is queued at the moment it is saved, and sent here whenever
@@ -10,7 +10,7 @@ tablet, through restarts, and go when it's back. Sending the same change twice
 does no harm: every write is an upsert keyed by the tablet's id.
 
 ```
-tablet (SQLite + outbox) --HTTP over truck Wi-Fi--> this service --> SQL Server: KFDisplay
+tablet (SQLite + outbox) --HTTP over local Wi-Fi--> this service --> SQL Server: KFDisplay
 ```
 
 ## Kitchen status (the other direction)
@@ -85,14 +85,14 @@ On **this PC** (once):
 On the **KFIDisplay PC**: create `C:\KFDisplay\display.ini`:
 
 ```
-SqlServer=TRUCKSQL,1433
+SqlServer=SQLPC,1433
 SqlUser=kfidisplay_read
 SqlPassword=<the password from setup 08>
-SyncAddress=http://TRUCKSQL:8787
+SyncAddress=http://SQLPC:8787
 DisplayKey=<the DISPLAY_KEY>
 ```
 
-(`TRUCKSQL` is this PC's name or address.) With that file KFIDisplay 2.0.8+ connects to SQL Server here with the
+(`SQLPC` is this PC's name or address.) With that file KFIDisplay 2.0.8+ connects to SQL Server here with the
 read-only login, skips creating the database and starting services (they run here), and copies new photos into its own
 `C:\images` every minute. Without the file it works as before, all on one PC. Problems go to `C:\KFDisplay\log.txt`.
 The registers keep pointing at **this** PC (Settings → KFDisplay sync).
@@ -101,7 +101,7 @@ The registers keep pointing at **this** PC (Settings → KFDisplay sync).
 
 **A brand-new system** (no old KFDisplay database): run `setup/00-new-database.sql` instead of steps 1-3 below (set its
 `CHANGE_ME` password first). It creates the database, every table and the `register_sync` login; then carry on from
-step 4. The full walk-through for a new truck is `INSTALL.md` in the CashRegister repo.
+step 4. The full walk-through for a new location is `INSTALL.md` in the CashRegister repo.
 
 **Converting the old KFDisplay database** (Gary's original PC): do these in order, in SQL Server Management Studio
 (connected to `.\SQLEXPRESS` as an administrator) unless noted.
@@ -129,7 +129,7 @@ step 4. The full walk-through for a new truck is `INSTALL.md` in the CashRegiste
    ```
    netsh advfirewall firewall add rule name="KFDisplay sync" dir=in action=allow protocol=TCP localport=8787 profile=private,domain
    ```
-   The truck Wi-Fi must be a **Private** network in Windows (Settings →
+   The business Wi-Fi must be a **Private** network in Windows (Settings →
    Network → Wi-Fi → the network → Private). On an office (domain) network
    the rule needs the domain profile too, which the command above includes.
    To fix an existing rule: `Set-NetFirewallRule -DisplayName "KFDisplay sync" -Profile Domain,Private`.
@@ -166,7 +166,7 @@ refused change. Sale contents are never logged.
 
 - The tablet must send the shared key (`Authorization: Bearer <SYNC_KEY>`).
   Anything else gets 401.
-- Traffic is plain HTTP on the truck's own Wi-Fi (WPA2). Don't forward port
+- Traffic is plain HTTP on the business's own Wi-Fi (WPA2). Don't forward port
   8787 on the router.
 - Column names come only from `src/apply.js`, never from the request, and
   every value is a typed parameter.

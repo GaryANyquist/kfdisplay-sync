@@ -1,6 +1,6 @@
 /*
  * The KFDisplay sync service. Runs on the KFDisplay PC and receives changes
- * from the register tablet over the truck's Wi-Fi.
+ * from the register tablet over the local Wi-Fi.
  *
  *   GET  /v1/health  -> { ok, database }
  *   POST /v1/sync    { changes: [...] } -> { applied: [...], failed: [...] }

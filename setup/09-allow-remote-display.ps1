@@ -39,7 +39,7 @@ if ($changed) {
 }
 
 # 2. Firewall, local network only (Domain and Private, like the existing "KFDisplay sync" rule: the
-#    truck PC's network is a domain network). The sync service's 8787 rule is usually there already.
+#    main PC's network is a domain network). The sync service's 8787 rule is usually there already.
 foreach ($rule in @(
     @{ Name = 'KFDisplay SQL Server'; Port = 1433 },
     @{ Name = 'KFDisplay sync'; Port = 8787 })) {
