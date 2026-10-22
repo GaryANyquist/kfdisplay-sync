@@ -36,6 +36,13 @@ tablet's schema, times ISO UTC. Each sale has `orders.register_id` (the register
 `POST /v1/order-status` `{ ids }`. A sale sent again by its own register never undoes a refund given here.
 **Run `setup/11-register-on-orders.sql` before starting this version of the service** (KFIDisplay 2.0.10 does it too).
 
+## Registers find this PC
+
+The service announces itself on the local network with mDNS (`_annaware-sync._tcp`, "KFDisplay PC (<computer name>)",
+`src/announce.js`), so a register's Settings → KFDisplay sync → **Find KFDisplay PC** fills in the address. It tells
+only the name and port; the sync key is still needed. Windows must let node.exe receive UDP 5353: `install-startup.ps1`
+adds the "KFDisplay sync (find)" firewall rule (run it again on a PC set up before 2026-10-22).
+
 ## Menu-board photos (tablet → this PC)
 
 KFIDisplay shows each item's photo from `C:\images` on this PC, found by the file name in `items.image`. A photo

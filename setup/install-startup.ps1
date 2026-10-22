@@ -10,6 +10,8 @@
        start-sync.cmd starts the service again whenever it stops, unless it was stopped on purpose.
     2. Desktop shortcuts for everyone on this PC: Start, Stop and Restart KFDisplay sync, and KFDisplay sync status.
        They need no administrator rights.
+    3. A firewall rule letting node.exe receive mDNS (UDP 5353) on private and domain networks, so registers can find
+       this PC (Settings -> KFDisplay sync -> Find KFDisplay PC).
   Safe to run again. Undo: delete the task (schtasks /Delete /TN "KFDisplay sync" /F) and the four shortcuts.
 #>
 #Requires -RunAsAdministrator
@@ -45,6 +47,12 @@ foreach ($s in @(
   $lnk.Save()
 }
 Write-Host "Shortcuts added to the desktop: Start, Stop, Restart KFDisplay sync, KFDisplay sync status."
+
+# 3. Let registers find this PC: the service announces itself with mDNS (src/announce.js) and must hear their queries.
+Get-NetFirewallRule -DisplayName 'KFDisplay sync (find)' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+New-NetFirewallRule -DisplayName 'KFDisplay sync (find)' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 5353 `
+  -Program $node -Profile Private, Domain | Out-Null
+Write-Host 'Firewall rule "KFDisplay sync (find)" added (mDNS, UDP 5353, for node.exe).'
 
 # Run it through the task now: a copy started some other way (by KFIDisplay, by hand, or an older version without
 # the restart loop) is stopped first, so the one running is the task's.
