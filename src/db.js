@@ -7,6 +7,7 @@ const TYPES = {
   [T.id]: sql.NVarChar(64),
   [T.text]: sql.NVarChar(200),
   [T.long]: sql.NVarChar(1000),
+  [T.max]: sql.NVarChar(sql.MAX),
   [T.int]: sql.Int,
   [T.float]: sql.Float,
   [T.date]: sql.DateTime2(3),

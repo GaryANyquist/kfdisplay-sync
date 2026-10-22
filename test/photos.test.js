@@ -92,3 +92,38 @@ test('the HTTP photo endpoints need the key and do what the tablet expects', asy
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('KFIDisplay on another PC lists and copies photos with the display key, and can do nothing else', async () => {
+  const dir = await tmpDir();
+  const key = 'test-key-that-is-long-enough-123';
+  const displayKey = 'display-key-that-is-long-enough-456';
+  await writeFile(path.join(dir, 'b.jpg'), JPEG);
+  await writeFile(path.join(dir, 'a.jpg'), JPEG);
+  await writeFile(path.join(dir, 'notes.txt'), 'not a photo');
+  const server = createServer({ syncKey: key, displayKey, photoDir: dir }, { run: async () => {}, databaseName: async () => 'KFDisplay' });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const get = (url, k) => fetch(`${base}${url}`, { headers: k ? { Authorization: `Bearer ${k}` } : {} });
+  try {
+    assert.deepEqual(await (await get('/v1/photos', displayKey)).json(), { photos: ['a.jpg', 'b.jpg'] });
+    const photo = await get('/v1/photos/a.jpg', displayKey);
+    assert.equal(photo.headers.get('content-type'), 'image/jpeg');
+    assert.deepEqual(Buffer.from(await photo.arrayBuffer()), JPEG);
+    assert.equal((await get('/v1/photos/a.jpg', key)).status, 200, 'the sync key works too');
+    assert.equal((await get('/v1/photos', undefined)).status, 401);
+    assert.equal((await get('/v1/photos/missing.jpg', displayKey)).status, 404);
+    assert.equal((await get('/v1/photos/..%2F..%2Fsecret.jpg', displayKey)).status, 404);
+    assert.equal((await get('/v1/photos/notes.txt', displayKey)).status, 404);
+    // The display key can't send changes, save photos or read anything else.
+    assert.equal((await get('/v1/health', displayKey)).status, 401);
+    const post = await fetch(`${base}/v1/photos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${displayKey}` },
+      body: JSON.stringify({ name: 'c.jpg', data: b64(JPEG) }),
+    });
+    assert.equal(post.status, 401);
+  } finally {
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

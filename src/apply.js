@@ -9,8 +9,8 @@
  * a transaction (db.js), the tests pass a fake that records statements.
  */
 
-/** Column types: id/short text, longer text, whole numbers, decimals, UTC timestamps. */
-export const T = { id: 'id', text: 'text', long: 'long', int: 'int', float: 'float', date: 'date' };
+/** Column types: id/short text, longer text, unlimited text, whole numbers, decimals, UTC timestamps. */
+export const T = { id: 'id', text: 'text', long: 'long', max: 'max', int: 'int', float: 'float', date: 'date' };
 
 export const TABLES = {
   categories: { key: ['id'], cols: { id: T.id, name: T.text, color: T.text, sort_order: T.int }, synced: true },
@@ -20,12 +20,22 @@ export const TABLES = {
       id: T.id, name: T.text, price: T.int, category_id: T.id, color: T.text, taxable: T.int,
       archived: T.int, sort_order: T.int, source_key: T.text, image: T.long,
       show_on_menu_board: T.int, out_of_stock: T.int, description: T.long,
+      hide_on_kiosk: T.int, allow_modifier_split: T.int,
     },
     synced: true,
   },
+  // An item's sizes, each with its own price (Wix price variants; the tablet's v21).
+  item_variants: {
+    key: ['id'],
+    // Ids are "<item id>~<Wix variant id>", longer than other ids.
+    cols: { id: T.text, item_id: T.id, name: T.text, price: T.int, sort_order: T.int },
+  },
   modifier_groups: {
     key: ['id'],
-    cols: { id: T.id, name: T.text, required: T.int, multi_select: T.int, sort_order: T.int },
+    cols: {
+      id: T.id, name: T.text, required: T.int, multi_select: T.int, sort_order: T.int,
+      min_select: T.int, max_select: T.int,
+    },
     synced: true,
   },
   modifier_options: {
@@ -84,17 +94,31 @@ export const TABLES = {
     key: [],
     cols: {
       line_uid: T.id, group_id: T.id, group_name: T.text, option_id: T.id, option_name: T.text,
-      price_delta: T.int,
+      price_delta: T.int, half: T.int,
     },
+  },
+  // Each register's settings (no keys or passwords: those never leave the tablet), as JSON.
+  register_settings: {
+    key: ['register_id'],
+    cols: { register_id: T.id, register_name: T.text, settings: T.max },
+    synced: true,
+  },
+  // Each register's record of which tablet item, category, group or option is which Wix id.
+  register_wix_links: {
+    key: [],
+    cols: { register_id: T.id, kind: T.text, wix_id: T.text, local_id: T.id, image_url: T.long },
   },
 };
 
 const MENU_TABLES = [
   'auto_discount_targets', 'auto_discounts',
-  'item_modifier_groups', 'modifier_options', 'modifier_groups', 'items', 'categories', 'discounts',
+  'item_modifier_groups', 'item_variants', 'modifier_options', 'modifier_groups', 'items', 'categories', 'discounts',
 ];
 
-export const ENTITIES = ['catalog', 'category', 'item', 'modifier_group', 'discount', 'auto_discount', 'shift', 'order'];
+export const ENTITIES = [
+  'catalog', 'category', 'item', 'modifier_group', 'discount', 'auto_discount', 'shift', 'order',
+  'settings', 'wix_links', 'kitchen_status',
+];
 
 /** Checks and converts one value; throws a message the tablet shows if it's wrong. */
 function value(table, col, type, raw) {
@@ -193,11 +217,13 @@ export async function applyChange(db, change) {
 
     case 'item':
       await del(db, 'DELETE FROM dbo.item_modifier_groups WHERE item_id = @id;', id);
+      await del(db, 'DELETE FROM dbo.item_variants WHERE item_id = @id;', id);
       if (op === 'delete') return del(db, 'DELETE FROM dbo.items WHERE id = @id;', id);
       await upsert(db, 'items', row);
       for (const link of list(data, 'modifier_groups')) {
         await insert(db, 'item_modifier_groups', { ...link, item_id: id });
       }
+      for (const v of list(data, 'variants')) await insert(db, 'item_variants', { ...v, item_id: id });
       return;
 
     case 'modifier_group':
@@ -230,6 +256,27 @@ export async function applyChange(db, change) {
         for (const m of list(line, 'modifiers')) await insert(db, 'order_line_modifiers', { ...m, line_uid: line.uid });
       }
       return;
+
+    case 'settings':
+      // One register's settings; the id is the register's own id (it keeps it for good).
+      if (op === 'delete') return del(db, 'DELETE FROM dbo.register_settings WHERE register_id = @id;', id);
+      return upsert(db, 'register_settings', { register_id: id, register_name: data.register_name, settings: data.settings });
+
+    case 'wix_links':
+      // The register replaces its whole list, so the PC does too.
+      await del(db, 'DELETE FROM dbo.register_wix_links WHERE register_id = @id;', id);
+      if (op === 'delete') return;
+      for (const l of list(data, 'links')) await insert(db, 'register_wix_links', { ...l, register_id: id });
+      return;
+
+    case 'kitchen_status':
+      // When the kitchen tablet marked the order ready and done. Only those two columns change.
+      if (op === 'delete') return;
+      return db.exec('UPDATE dbo.orders SET order_up_at = @ready, completed_at = @done WHERE id = @id;', [
+        { name: 'ready', type: T.date, value: value('orders', 'order_up_at', T.date, data.order_up_at) },
+        { name: 'done', type: T.date, value: value('orders', 'completed_at', T.date, data.completed_at) },
+        { name: 'id', type: T.id, value: id },
+      ]);
 
     case 'catalog':
       // The whole menu: replace every menu table with what the tablet has.

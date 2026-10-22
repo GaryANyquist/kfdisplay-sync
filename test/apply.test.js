@@ -11,22 +11,57 @@ function fakeDb() {
 }
 const p = (call) => Object.fromEntries(call.params.map((x) => [x.name, x.value]));
 
-test('an item upserts its row and replaces its modifier links', async () => {
+test('an item upserts its row and replaces its modifier links and sizes', async () => {
   const db = fakeDb();
   await applyChange(db, {
     entity: 'item', id: 'i1', version: 3, op: 'upsert',
     data: {
       id: 'i1', name: 'Cheeseburger', price: 1100, category_id: 'c', color: '#CC0023', taxable: 0,
       archived: 0, sort_order: 4, source_key: null, image: null, show_on_menu_board: 1, out_of_stock: 0,
+      hide_on_kiosk: 1, allow_modifier_split: 0,
       modifier_groups: [{ group_id: 'g1', sort_order: 0 }, { group_id: 'g2', sort_order: 1 }],
+      variants: [{ id: 'i1~s', name: 'Single', price: 1100, sort_order: 0 }, { id: 'i1~d', name: 'Double', price: 1500, sort_order: 1 }],
     },
   });
   assert.match(db.calls[0].sql, /^DELETE FROM dbo\.item_modifier_groups WHERE item_id = @id;$/);
-  assert.match(db.calls[1].sql, /^MERGE dbo\.items WITH \(HOLDLOCK\)/);
-  assert.match(db.calls[1].sql, /t\.synced_at = SYSUTCDATETIME\(\)/);
-  assert.equal(p(db.calls[1]).price, 1100);
-  assert.equal(p(db.calls[1]).show_on_menu_board, 1);
-  assert.deepEqual(db.calls.slice(2).map((c) => [p(c).item_id, p(c).group_id]), [['i1', 'g1'], ['i1', 'g2']]);
+  assert.match(db.calls[1].sql, /^DELETE FROM dbo\.item_variants WHERE item_id = @id;$/);
+  assert.match(db.calls[2].sql, /^MERGE dbo\.items WITH \(HOLDLOCK\)/);
+  assert.match(db.calls[2].sql, /t\.synced_at = SYSUTCDATETIME\(\)/);
+  assert.equal(p(db.calls[2]).price, 1100);
+  assert.equal(p(db.calls[2]).show_on_menu_board, 1);
+  assert.equal(p(db.calls[2]).hide_on_kiosk, 1);
+  assert.deepEqual(db.calls.slice(3, 5).map((c) => [p(c).item_id, p(c).group_id]), [['i1', 'g1'], ['i1', 'g2']]);
+  assert.deepEqual(db.calls.slice(5).map((c) => [c.sql.split(' (')[0], p(c).item_id, p(c).name, p(c).price]),
+    [['INSERT INTO dbo.item_variants', 'i1', 'Single', 1100], ['INSERT INTO dbo.item_variants', 'i1', 'Double', 1500]]);
+});
+
+test('settings, Wix links and kitchen times from a register', async () => {
+  const db = fakeDb();
+  await applyChange(db, {
+    entity: 'settings', id: 'reg_ab12', version: 1, op: 'upsert',
+    data: { register_name: 'R1', settings: '{"taxRate":0,"registerName":"R1"}' },
+  });
+  assert.match(db.calls[0].sql, /^MERGE dbo\.register_settings/);
+  assert.deepEqual([p(db.calls[0]).register_id, p(db.calls[0]).register_name, p(db.calls[0]).settings], ['reg_ab12', 'R1', '{"taxRate":0,"registerName":"R1"}']);
+
+  const links = fakeDb();
+  await applyChange(links, {
+    entity: 'wix_links', id: 'reg_ab12', version: 2, op: 'upsert',
+    data: { links: [{ kind: 'item', wix_id: 'w1', local_id: 'it_7', image_url: null }, { kind: 'group', wix_id: 'g1', local_id: 'wxg_g1' }] },
+  });
+  assert.match(links.calls[0].sql, /^DELETE FROM dbo\.register_wix_links WHERE register_id = @id;$/);
+  assert.deepEqual(links.calls.slice(1).map((c) => [p(c).register_id, p(c).kind, p(c).local_id]), [['reg_ab12', 'item', 'it_7'], ['reg_ab12', 'group', 'wxg_g1']]);
+
+  const kitchen = fakeDb();
+  await applyChange(kitchen, {
+    entity: 'kitchen_status', id: 'o1', version: 1, op: 'upsert',
+    data: { order_up_at: '2026-10-22T18:01:00.000Z', completed_at: null },
+  });
+  assert.match(kitchen.calls[0].sql, /^UPDATE dbo\.orders SET order_up_at = @ready, completed_at = @done WHERE id = @id;$/);
+  assert.deepEqual([p(kitchen.calls[0]).ready.toISOString(), p(kitchen.calls[0]).done, p(kitchen.calls[0]).id], ['2026-10-22T18:01:00.000Z', null, 'o1']);
+  const gone = fakeDb();
+  await applyChange(gone, { entity: 'kitchen_status', id: 'o1', version: 2, op: 'delete' });
+  assert.equal(gone.calls.length, 0, 'the PC keeps kitchen times like it keeps sales');
 });
 
 test('the request never chooses column names', async () => {
@@ -96,7 +131,8 @@ test('the catalog replaces every menu table', async () => {
     },
   });
   const deletes = db.calls.filter((c) => c.sql.startsWith('DELETE')).map((c) => c.sql);
-  assert.equal(deletes.length, 8);
+  assert.equal(deletes.length, 9);
+  assert.ok(deletes.includes('DELETE FROM dbo.item_variants;'));
   const inserts = db.calls.filter((c) => c.sql.startsWith('INSERT')).map((c) => c.sql.split(' (')[0]);
   assert.deepEqual(inserts, ['INSERT INTO dbo.categories', 'INSERT INTO dbo.items']);
 });

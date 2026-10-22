@@ -8,8 +8,11 @@
  *   POST /v1/photos { name, data }          -> { result }            saves one photo (base64) into PHOTO_DIR
  *   POST /v1/kitchen-status { ids: [...] } -> { orders: [{ id, order_up_at, completed_at }] }
  *                    what the Kitchen Display did with those orders; the tablet pulls it
+ *   GET  /v1/photos         -> { photos: [names] }   the photos in PHOTO_DIR
+ *   GET  /v1/photos/<name>  -> the image itself       (KFIDisplay on another PC copies these)
  *
- * Both need "Authorization: Bearer <SYNC_KEY>". Each change is applied in its
+ * All need "Authorization: Bearer <SYNC_KEY>"; the two GET photo routes also take DISPLAY_KEY, so the
+ * menu-board PC can copy photos without the register's key (Gary, 2026-10-22). Each change is applied in its
  * own transaction, so one bad change can't block or half-apply the others.
  * Logs say how many changes came and went, never their contents.
  */
@@ -18,7 +21,7 @@ import http from 'node:http';
 
 import { applyChange } from './apply.js';
 import { databaseName, inTransaction, kitchenStatus } from './db.js';
-import { missingPhotos, savePhoto } from './photos.js';
+import { imageKind, listPhotos, missingPhotos, readPhoto, savePhoto } from './photos.js';
 
 const MAX_BODY = 10 * 1024 * 1024;
 const MAX_CHANGES = 200;
@@ -75,7 +78,20 @@ export function createServer(cfg, deps = {}) {
 
   return http.createServer(async (req, res) => {
     try {
-      if (!authorized(req.headers.authorization, cfg.syncKey)) return send(res, 401, { error: 'bad sync key' });
+      // KFIDisplay on another PC copies photos with the display key; everything else needs the sync key.
+      const photoRead = req.method === 'GET' && (req.url === '/v1/photos' || req.url.startsWith('/v1/photos/'));
+      const key = req.headers.authorization;
+      const ok = authorized(key, cfg.syncKey) || (photoRead && !!cfg.displayKey && authorized(key, cfg.displayKey));
+      if (!ok) return send(res, 401, { error: 'bad sync key' });
+
+      if (photoRead && req.url === '/v1/photos') return send(res, 200, { photos: await listPhotos(photoDir) });
+      if (photoRead) {
+        const bytes = await readPhoto(photoDir, decodeURIComponent(req.url.slice('/v1/photos/'.length)));
+        if (!bytes) return send(res, 404, { error: 'no such photo' });
+        const kind = imageKind(bytes);
+        res.writeHead(200, { 'Content-Type': kind === 'png' ? 'image/png' : kind === 'gif' ? 'image/gif' : 'image/jpeg' });
+        return res.end(bytes);
+      }
 
       if (req.method === 'GET' && req.url === '/v1/health') {
         return send(res, 200, { ok: true, database: await dbName() });

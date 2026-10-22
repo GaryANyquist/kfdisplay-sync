@@ -22,6 +22,9 @@ returns `{ "orders": [{ id, order_up_at, completed_at }] }` (ISO UTC, null when 
 only needs SELECT on `orders` for this (it already has it). `apply.js` never writes these two columns, so a re-sync of
 an order can't undo what the kitchen did.
 
+Since register 2.4.11 the kitchen tablet (not the PC) marks orders ready and done, and the register sends those times
+here as a `kitchen_status` change, which sets `orders.order_up_at` / `completed_at` (and nothing else).
+
 ## Menu-board photos (tablet → this PC)
 
 KFIDisplay shows each item's photo from `C:\images` on this PC, found by the file name in `items.image`. A photo
@@ -33,12 +36,22 @@ Only the tablet's menu-board items are checked. Files are only ever added, never
 `.jpg/.jpeg/.png/.gif` name and the bytes must really be an image (5 MB max). The folder is `PHOTO_DIR` in `.env`
 (default `C:\images`). The service account needs write access to it (SYSTEM has it by default).
 
+`GET /v1/photos` (the list) and `GET /v1/photos/<name>` (one photo) let KFIDisplay on another PC copy them; see below.
+
 ## What ends up in KFDisplay
 
-The tablet's own schema (see `setup/02-replace-schema.sql`):
-`categories`, `items`, `modifier_groups`, `modifier_options`,
+Everything the register keeps (Gary, 2026-10-22), in its own schema (see `setup/02-replace-schema.sql` and
+`setup/10-sync-everything.sql`):
+`categories`, `items`, `item_variants` (sizes, each with its own price), `modifier_groups`, `modifier_options`,
 `item_modifier_groups`, `discounts`, `auto_discounts`, `auto_discount_targets`,
-`shifts` (drawers), `orders`, `order_lines`, `order_line_modifiers`.
+`shifts` (drawers), `orders`, `order_lines`, `order_line_modifiers`, and per register (by its own id, since several
+registers can send here) `register_settings` (its settings as JSON; keys and passwords never leave the tablet) and
+`register_wix_links` (which tablet id is which Wix id). Only the tablet's own bookkeeping stays on the tablet: its send
+queues and its cached ticket.
+
+- **Kiosk and half-and-half:** `items.hide_on_kiosk`, `items.allow_modifier_split`; an option on one half of an item has
+  `order_line_modifiers.half` = 1 or 2 (0 = the whole item).
+- **Option limits:** `modifier_groups.min_select` / `max_select` (0 = no limit).
 
 - **Item descriptions:** `items.description` is for the KFDisplay app (menu
   board). It is edited on the tablet (Items → Edit item) and synced; the
@@ -56,6 +69,33 @@ The tablet's own schema (see `setup/02-replace-schema.sql`):
   overwritten the next time the tablet sends that item or the whole menu.
 - Sales are never deleted here. "Clear sales history" on the tablet only clears
   the tablet.
+
+## KFIDisplay on its own PC (optional)
+
+KFIDisplay (the menu board) can run on a different Windows PC from SQL Server and this service. This PC (SQL Server +
+this service) keeps receiving everything from the registers; the KFIDisplay PC only reads the menu and copies photos.
+
+On **this PC** (once):
+1. In SSMS, run `setup/08-display-login.sql` (set its password first) and `setup/10-sync-everything.sql`.
+2. In PowerShell as Administrator: `powershell -ExecutionPolicy Bypass -File setup\09-allow-remote-display.ps1`
+   (SQL Server on TCP 1433 with SQL logins allowed, and firewall rules for 1433 and 8787 on the local network).
+3. Make a display key with `npm run make-key` and add it to `.env` as `DISPLAY_KEY=...` (not the same as SYNC_KEY;
+   it can only list and download photos). Restart this service.
+
+On the **KFIDisplay PC**: create `C:\KFDisplay\display.ini`:
+
+```
+SqlServer=TRUCKSQL,1433
+SqlUser=kfidisplay_read
+SqlPassword=<the password from setup 08>
+SyncAddress=http://TRUCKSQL:8787
+DisplayKey=<the DISPLAY_KEY>
+```
+
+(`TRUCKSQL` is this PC's name or address.) With that file KFIDisplay 2.0.8+ connects to SQL Server here with the
+read-only login, skips creating the database and starting services (they run here), and copies new photos into its own
+`C:\images` every minute. Without the file it works as before, all on one PC. Problems go to `C:\KFDisplay\log.txt`.
+The registers keep pointing at **this** PC (Settings → KFDisplay sync).
 
 ## One-time setup
 

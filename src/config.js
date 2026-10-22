@@ -68,9 +68,17 @@ export function loadConfig(rawEnv = process.env, fileEnv = loadDotEnv()) {
     sql.options.cryptoCredentialsDetails = { minVersion: 'TLSv1', ciphers: 'DEFAULT@SECLEVEL=0' };
   }
 
+  // Optional: lets KFIDisplay on another PC copy photos (read only). Same length rule as SYNC_KEY.
+  const displayKey = env.DISPLAY_KEY ?? '';
+  if (displayKey && displayKey.length < 24) {
+    throw new Error('DISPLAY_KEY must be at least 24 characters (or left out). Run `npm run make-key` to make one.');
+  }
+  if (displayKey && displayKey === syncKey) throw new Error('DISPLAY_KEY must be different from SYNC_KEY.');
+
   return {
     sql,
     syncKey,
+    displayKey: displayKey || undefined,
     port: int(env.SYNC_PORT, 8787),
     host: env.SYNC_HOST || '0.0.0.0',
     // Where KFIDisplay reads item photos from; the tablet sends missing ones here.

@@ -4,7 +4,7 @@
  * tablet's camera exist only on the tablet, so the tablet asks which of them are missing here and
  * sends those. A file is only ever added, never replaced: a changed photo has a new name.
  */
-import { mkdir, readdir, rename, writeFile, unlink } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, writeFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 
 export const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
@@ -29,6 +29,29 @@ export async function missingPhotos(dir, names) {
     have = new Set(); // the folder doesn't exist yet
   }
   return names.filter((n) => isSafeName(n) && !have.has(n.toLowerCase()));
+}
+
+/**
+ * The photos in `dir` (names only, safe image names, sorted). For KFIDisplay running on another PC,
+ * which copies the ones it lacks (Gary, 2026-10-22). An empty list if the folder doesn't exist yet.
+ */
+export async function listPhotos(dir) {
+  try {
+    return (await readdir(dir)).filter(isSafeName).sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
+
+/** The bytes of photo `name` in `dir`, or null when the name isn't a safe image name or there is no such file. */
+export async function readPhoto(dir, name) {
+  if (!isSafeName(name)) return null;
+  try {
+    const bytes = await readFile(path.join(dir, name));
+    return imageKind(bytes) ? bytes : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
