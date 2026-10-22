@@ -99,8 +99,12 @@ The registers keep pointing at **this** PC (Settings → KFDisplay sync).
 
 ## One-time setup
 
-Do these in order, in SQL Server Management Studio (connected to
-`.\SQLEXPRESS` as an administrator) unless noted.
+**A brand-new system** (no old KFDisplay database): run `setup/00-new-database.sql` instead of steps 1-3 below (set its
+`CHANGE_ME` password first). It creates the database, every table and the `register_sync` login; then carry on from
+step 4. The full walk-through for a new truck is `INSTALL.md` in the CashRegister repo.
+
+**Converting the old KFDisplay database** (Gary's original PC): do these in order, in SQL Server Management Studio
+(connected to `.\SQLEXPRESS` as an administrator) unless noted.
 
 1. **Back up**: run `setup/01-backup-kfdisplay.sql`. The Messages tab prints
    the backup path. Copy that `.bak` file off the PC as well.
