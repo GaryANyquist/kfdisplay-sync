@@ -262,3 +262,22 @@ test('an item carries its description', async () => {
   const merge = db.calls.find((c) => c.sql.startsWith('MERGE dbo.items'));
   assert.equal(p(merge).description, 'Two meatballs in gravy');
 });
+
+test('restart: only with the sync key; answers, then stops (start-sync.cmd starts it again)', async () => {
+  const key = 'test-key-that-is-long-enough-123';
+  let exited = null;
+  const server = createServer({ syncKey: key, displayKey: 'display-key-that-is-long-enough-456' }, { exit: (code) => { exited = code; } });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (k) => fetch(`${base}/v1/restart`, { method: 'POST', headers: k ? { Authorization: `Bearer ${k}` } : {} });
+  try {
+    assert.equal((await post()).status, 401);
+    assert.equal((await post('display-key-that-is-long-enough-456')).status, 401, 'the display key cannot restart it');
+    assert.equal(exited, null);
+    assert.deepEqual(await (await post(key)).json(), { ok: true, restarting: true });
+    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(exited, 0);
+  } finally {
+    server.close();
+  }
+});

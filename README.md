@@ -137,21 +137,23 @@ Do these in order, in SQL Server Management Studio (connected to
    (e.g. `192.168.1.20`) and the sync key, then tap **Test connection**. The
    first sync sends the whole menu and every sale already on the tablet.
 
-### Run at startup
+### Run at startup, and starting / stopping it
 
-From an administrator terminal:
+From an **administrator PowerShell**, once:
 
 ```
-schtasks /Create /TN "KFDisplay sync" /TR "C:\Source\kfdisplay-sync\start-sync.cmd" /SC ONSTART /RU SYSTEM /RL HIGHEST /F
+powershell -ExecutionPolicy Bypass -File C:\Source\kfdisplay-sync\setup\install-startup.ps1
 ```
 
-Then, in an **administrator PowerShell**, take off Windows' default "stop the task if it runs longer
-than 3 days" (a plain `schtasks /Create` gets it; around 2026-10-10 it silently stopped this service and the
-other one, three days after their last start) and have it restarted if it ever fails:
+It sets up the "KFDisplay sync" scheduled task (at boot, as SYSTEM, no 3-day time limit, restarted if the task fails)
+and puts four shortcuts on the desktop: **Start**, **Stop** and **Restart KFDisplay sync**, and **KFDisplay sync status**
+(they run `node tools/control.js start|stop|restart|status` and need no administrator rights). The service no longer
+depends on KFIDisplay to start it.
 
-```powershell
-$t = Get-ScheduledTask -TaskName 'KFDisplay sync'; $t.Settings.ExecutionTimeLimit = 'PT0S'; $t.Settings.RestartCount = 999; $t.Settings.RestartInterval = 'PT1M'; Set-ScheduledTask -InputObject $t
-```
+`start-sync.cmd` starts the service again a few seconds after it stops (an update, a crash, a restart from the
+register), unless it was stopped on purpose (Stop leaves `stop.flag`, which the script removes as it stops).
+The register can restart it too: **Settings → KFDisplay sync → Restart sync service** (`POST /v1/restart`, sync key
+only). Nothing can start it from the register once it is stopped; use the Start shortcut on this PC.
 
 Output goes to `logs\sync.log`: one line per batch, with counts and any
 refused change. Sale contents are never logged.

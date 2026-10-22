@@ -8,6 +8,7 @@
  *   POST /v1/photos { name, data }          -> { result }            saves one photo (base64) into PHOTO_DIR
  *   POST /v1/kitchen-status { ids: [...] } -> { orders: [{ id, order_up_at, completed_at }] }
  *                    what the Kitchen Display did with those orders; the tablet pulls it
+ *   POST /v1/restart        -> { ok, restarting }     stops; start-sync.cmd starts it again
  *   GET  /v1/photos         -> { photos: [names] }   the photos in PHOTO_DIR
  *   GET  /v1/photos/<name>  -> the image itself       (KFIDisplay on another PC copies these)
  *
@@ -91,6 +92,15 @@ export function createServer(cfg, deps = {}) {
         const kind = imageKind(bytes);
         res.writeHead(200, { 'Content-Type': kind === 'png' ? 'image/png' : kind === 'gif' ? 'image/gif' : 'image/jpeg' });
         return res.end(bytes);
+      }
+
+      if (req.method === 'POST' && req.url === '/v1/restart') {
+        // From the register (Settings -> KFDisplay sync -> Restart) or tools/control.js. start-sync.cmd starts the
+        // service again a few seconds later (with any new code), unless tools/control.js stop left stop.flag.
+        console.log(`${new Date().toISOString()} restart asked for`);
+        send(res, 200, { ok: true, restarting: true });
+        setTimeout(() => (deps.exit ?? process.exit)(0), 300);
+        return;
       }
 
       if (req.method === 'GET' && req.url === '/v1/health') {
