@@ -25,6 +25,17 @@ an order can't undo what the kitchen did.
 Since register 2.4.11 the kitchen tablet (not the PC) marks orders ready and done, and the register sends those times
 here as a `kitchen_status` change, which sets `orders.order_up_at` / `completed_at` (and nothing else).
 
+## Every register's sales in the reports (this PC → registers)
+
+Since register 2.4.15, Reports → Transactions, Sales Tax, Monthly Summary and Sales Summary (when "All registers" is
+chosen) read every register's sales from here: `POST /v1/orders/search` with `{ since, until, limit }` (ISO times,
+either may be null; limit 1-20000, default 500) returns `{ orders, lines, modifiers, registers }`, rows named as in the
+tablet's schema, times ISO UTC. Each sale has `orders.register_id` (the register's own id; names are in
+`register_settings`). A register can refund another register's sale; it sends entity `order_status` (only
+`status`, `refunded_at`, `refund_reason` change), and the register that took the sale pulls it with
+`POST /v1/order-status` `{ ids }`. A sale sent again by its own register never undoes a refund given here.
+**Run `setup/11-register-on-orders.sql` before starting this version of the service** (KFIDisplay 2.0.10 does it too).
+
 ## Menu-board photos (tablet → this PC)
 
 KFIDisplay shows each item's photo from `C:\images` on this PC, found by the file name in `items.image`. A photo

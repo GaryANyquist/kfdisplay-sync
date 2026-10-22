@@ -8,6 +8,10 @@
  *   POST /v1/photos { name, data }          -> { result }            saves one photo (base64) into PHOTO_DIR
  *   POST /v1/kitchen-status { ids: [...] } -> { orders: [{ id, order_up_at, completed_at }] }
  *                    what the Kitchen Display did with those orders; the tablet pulls it
+ *   POST /v1/orders/search { since?, until?, limit? } -> { orders, lines, modifiers, registers }
+ *                    every register's sales in that time (Reports -> Transactions)
+ *   POST /v1/order-status { ids: [...] } -> { orders: [{ id, status, refunded_at, refund_reason }] }
+ *                    refunds given on another register; the register that took the sale pulls them
  *   POST /v1/restart        -> { ok, restarting }     stops; start-sync.cmd starts it again
  *   GET  /v1/photos         -> { photos: [names] }   the photos in PHOTO_DIR
  *   GET  /v1/photos/<name>  -> the image itself       (KFIDisplay on another PC copies these)
@@ -21,12 +25,13 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 
 import { applyChange } from './apply.js';
-import { databaseName, inTransaction, kitchenStatus } from './db.js';
+import { databaseName, inTransaction, kitchenStatus, orderStatus, searchOrders } from './db.js';
 import { imageKind, listPhotos, missingPhotos, readPhoto, savePhoto } from './photos.js';
 
 const MAX_BODY = 10 * 1024 * 1024;
 const MAX_CHANGES = 200;
 const MAX_IDS = 500;
+const MAX_ORDERS = 20000;
 
 const digest = (s) => createHash('sha256').update(s).digest();
 
@@ -76,6 +81,8 @@ export function createServer(cfg, deps = {}) {
   const dbName = deps.databaseName ?? (() => databaseName(cfg.sql));
   const photoDir = cfg.photoDir ?? 'C:\\images';
   const kitchen = deps.kitchenStatus ?? ((ids) => kitchenStatus(cfg.sql, ids));
+  const search = deps.searchOrders ?? ((q) => searchOrders(cfg.sql, q));
+  const statuses = deps.orderStatus ?? ((ids) => orderStatus(cfg.sql, ids));
 
   return http.createServer(async (req, res) => {
     try {
@@ -126,6 +133,23 @@ export function createServer(cfg, deps = {}) {
         return send(res, 200, result);
       }
 
+      if (req.method === 'POST' && req.url === '/v1/orders/search') {
+        let body;
+        try {
+          body = JSON.parse(await readBody(req));
+        } catch (err) {
+          return send(res, err.status ?? 400, { error: err.status ? err.message : 'body is not JSON' });
+        }
+        const when = (v) => (v == null ? null : new Date(v));
+        const since = when(body?.since);
+        const until = when(body?.until);
+        const limit = body?.limit ?? 500;
+        if ([since, until].some((d) => d && Number.isNaN(d.getTime())) || !Number.isInteger(limit) || limit < 1 || limit > MAX_ORDERS) {
+          return send(res, 400, { error: `since/until must be times and limit 1-${MAX_ORDERS}` });
+        }
+        return send(res, 200, await search({ since, until, limit }));
+      }
+
       if (req.method === 'POST' && req.url === '/v1/kitchen-status') {
         let body;
         try {
@@ -138,6 +162,20 @@ export function createServer(cfg, deps = {}) {
           return send(res, 400, { error: `ids must be a list of at most ${MAX_IDS} order ids` });
         }
         return send(res, 200, { orders: await kitchen(ids) });
+      }
+
+      if (req.method === 'POST' && req.url === '/v1/order-status') {
+        let body;
+        try {
+          body = JSON.parse(await readBody(req));
+        } catch (err) {
+          return send(res, err.status ?? 400, { error: err.status ? err.message : 'body is not JSON' });
+        }
+        const ids = body?.ids;
+        if (!Array.isArray(ids) || ids.length > MAX_IDS || ids.some((i) => typeof i !== 'string' || !i || i.length > 64)) {
+          return send(res, 400, { error: `ids must be a list of at most ${MAX_IDS} order ids` });
+        }
+        return send(res, 200, { orders: await statuses(ids) });
       }
 
       if (req.method === 'POST' && (req.url === '/v1/photos/check' || req.url === '/v1/photos')) {

@@ -281,3 +281,56 @@ test('restart: only with the sync key; answers, then stops (start-sync.cmd start
     server.close();
   }
 });
+
+test('a refund given on another register is never undone by the sale being sent again', async () => {
+  const db = fakeDb();
+  await applyChange(db, {
+    entity: 'order', id: 'o1', version: 3, op: 'upsert',
+    data: { id: 'o1', number: 4, created_at: '2026-10-22T18:00:00.000Z', shift_id: 's1', subtotal: 900, discount_amount: 0,
+      tax: 0, tip: 0, total: 900, payment_type: 'card', payment_amount: 900, status: 'completed', register_id: 'reg_1', lines: [] },
+  });
+  const merge = db.calls[0];
+  assert.equal(p(merge).register_id, 'reg_1');
+  for (const c of ['status', 'refunded_at', 'refund_reason']) {
+    assert.ok(merge.sql.includes(`t.${c} = CASE WHEN t.status <> 'completed' AND s.status = 'completed' THEN t.${c} ELSE s.${c} END`), c);
+  }
+  assert.ok(merge.sql.includes('t.total = s.total'));
+
+  const st = fakeDb();
+  await applyChange(st, {
+    entity: 'order_status', id: 'o1', version: 1, op: 'upsert',
+    data: { status: 'refunded', refunded_at: '2026-10-22T19:00:00.000Z', refund_reason: 'Square refund r1' },
+  });
+  assert.match(st.calls[0].sql, /^UPDATE dbo\.orders SET status = @status, refunded_at = @at, refund_reason = @reason WHERE id = @id;$/);
+  assert.deepEqual([p(st.calls[0]).status, p(st.calls[0]).reason, p(st.calls[0]).id], ['refunded', 'Square refund r1', 'o1']);
+  await assert.rejects(applyChange(fakeDb(), { entity: 'order_status', id: 'o1', version: 1, op: 'upsert', data: { status: 'gone' } }));
+});
+
+test('registers read every sale back, and pull refunds given elsewhere', async () => {
+  const key = 'test-key-that-is-long-enough-123';
+  const asked = [];
+  const server = createServer({ syncKey: key }, {
+    searchOrders: async (q) => { asked.push(q); return { orders: [{ id: 'o1' }], lines: [], modifiers: [], registers: [{ id: 'reg_1', name: 'R1' }] }; },
+    orderStatus: async (ids) => ids.map((id) => ({ id, status: 'refunded', refunded_at: null, refund_reason: null })),
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (path, body, auth = true) =>
+    fetch(`${base}${path}`, { method: 'POST', headers: auth ? { Authorization: `Bearer ${key}` } : {}, body: JSON.stringify(body) });
+  try {
+    const r = await post('/v1/orders/search', { since: '2026-10-22T05:00:00.000Z', limit: 100 });
+    assert.deepEqual((await r.json()).registers, [{ id: 'reg_1', name: 'R1' }]);
+    assert.deepEqual([asked[0].since.toISOString(), asked[0].until, asked[0].limit], ['2026-10-22T05:00:00.000Z', null, 100]);
+    assert.equal((await post('/v1/orders/search', {})).status, 200);
+    assert.equal(asked[1].limit, 500);
+    assert.equal((await post('/v1/orders/search', { since: 'nope' })).status, 400);
+    assert.equal((await post('/v1/orders/search', { limit: 99999 })).status, 400);
+    assert.equal((await post('/v1/orders/search', {}, false)).status, 401);
+
+    const s = await post('/v1/order-status', { ids: ['o1'] });
+    assert.deepEqual(await s.json(), { orders: [{ id: 'o1', status: 'refunded', refunded_at: null, refund_reason: null }] });
+    assert.equal((await post('/v1/order-status', { ids: [1] })).status, 400);
+  } finally {
+    server.close();
+  }
+});

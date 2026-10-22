@@ -77,9 +77,12 @@ export const TABLES = {
       payment_type: T.text, payment_amount: T.int, tendered: T.int, change_due: T.int,
       card_brand: T.text, last4: T.text, payment_note: T.long, status: T.text,
       refunded_at: T.date, refund_reason: T.long, pager_number: T.text, tender: T.text,
-      processor: T.text, processor_ref: T.text,
+      processor: T.text, processor_ref: T.text, register_id: T.id,
     },
     synced: true,
+    // A sale refunded here from another register (entity order_status) stays refunded when the register that took
+    // it sends the sale again before it has heard of the refund.
+    sticky: { when: "t.status <> 'completed' AND s.status = 'completed'", cols: ['status', 'refunded_at', 'refund_reason'] },
   },
   order_lines: {
     key: ['uid'],
@@ -117,7 +120,7 @@ const MENU_TABLES = [
 
 export const ENTITIES = [
   'catalog', 'category', 'item', 'modifier_group', 'discount', 'auto_discount', 'shift', 'order',
-  'settings', 'wix_links', 'kitchen_status',
+  'settings', 'wix_links', 'kitchen_status', 'order_status',
 ];
 
 /** Checks and converts one value; throws a message the tablet shows if it's wrong. */
@@ -156,10 +159,12 @@ function requireKey(table, row) {
 /** Insert or update one row. Columns the tablet doesn't own (kitchen times) are never touched. */
 export async function upsert(db, table, row) {
   requireKey(table, row);
-  const { key, cols, synced } = TABLES[table];
+  const { key, cols, synced, sticky } = TABLES[table];
   const names = Object.keys(cols);
   const nonKey = names.filter((c) => !key.includes(c));
-  const sets = nonKey.map((c) => `t.${c} = s.${c}`);
+  const sets = nonKey.map((c) =>
+    sticky?.cols.includes(c) ? `t.${c} = CASE WHEN ${sticky.when} THEN t.${c} ELSE s.${c} END` : `t.${c} = s.${c}`
+  );
   if (synced) sets.push('t.synced_at = SYSUTCDATETIME()');
   const sql =
     `MERGE dbo.${table} WITH (HOLDLOCK) AS t\n` +
@@ -275,6 +280,18 @@ export async function applyChange(db, change) {
       return db.exec('UPDATE dbo.orders SET order_up_at = @ready, completed_at = @done WHERE id = @id;', [
         { name: 'ready', type: T.date, value: value('orders', 'order_up_at', T.date, data.order_up_at) },
         { name: 'done', type: T.date, value: value('orders', 'completed_at', T.date, data.completed_at) },
+        { name: 'id', type: T.id, value: id },
+      ]);
+
+    case 'order_status':
+      // A register refunded another register's sale (Reports -> Transactions, 2.4.15). Only these columns change;
+      // the register that took the sale pulls the new status (POST /v1/order-status).
+      if (op === 'delete') return;
+      if (!['completed', 'refunded', 'voided'].includes(data.status)) throw new Error('order_status.status is not a status');
+      return db.exec('UPDATE dbo.orders SET status = @status, refunded_at = @at, refund_reason = @reason WHERE id = @id;', [
+        { name: 'status', type: T.text, value: data.status },
+        { name: 'at', type: T.date, value: value('orders', 'refunded_at', T.date, data.refunded_at) },
+        { name: 'reason', type: T.long, value: value('orders', 'refund_reason', T.long, data.refund_reason) },
         { name: 'id', type: T.id, value: id },
       ]);
 

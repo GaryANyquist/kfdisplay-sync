@@ -198,6 +198,7 @@ BEGIN
         tender           nvarchar(20)   NULL,
         processor        nvarchar(20)   NULL,
         processor_ref    nvarchar(200)  NULL,
+        register_id      nvarchar(64)   NULL,
         order_up_at      datetime2(3)   NULL,
         paged_at         datetime2(3)   NULL,
         completed_at     datetime2(3)   NULL,
