@@ -51,7 +51,7 @@ export const TABLES = {
   auto_discounts: {
     key: ['id'],
     cols: {
-      id: T.id, name: T.text, type: T.text, value: T.float, active: T.int, sort_order: T.int,
+      id: T.id, name: T.text, type: T.text, value: T.float, active: T.int, sort_order: T.int, schedule: T.max,
       starts_on: T.text, ends_on: T.text, sale_price: T.int,
     },
     synced: true,
