@@ -100,6 +100,14 @@ export const TABLES = {
       price_delta: T.int, half: T.int,
     },
   },
+  // A sale paid several ways (register 2.5.1): each payment, in order. Sent with its order.
+  order_payments: {
+    key: ['order_id', 'seq'],
+    cols: {
+      order_id: T.id, seq: T.int, tender: T.text, amount: T.int, tip: T.int, tendered: T.int, change_due: T.int,
+      card_brand: T.text, last4: T.text, processor: T.text, processor_ref: T.text, reference_id: T.text,
+    },
+  },
   // Coupons (register 2.5.0): made on a register or copied from Wix (ids wxk_...), with what each covers.
   coupons: {
     key: ['id'],
@@ -280,6 +288,11 @@ export async function applyChange(db, change) {
       for (const line of list(data, 'lines')) {
         await insert(db, 'order_lines', { ...line, order_id: id });
         for (const m of list(line, 'modifiers')) await insert(db, 'order_line_modifiers', { ...m, line_uid: line.uid });
+      }
+      // A split sale's payments (register 2.5.1); an older register sends none and leaves none.
+      if (data.payments !== undefined) {
+        await del(db, 'DELETE FROM dbo.order_payments WHERE order_id = @id;', id);
+        for (const p of list(data, 'payments')) await insert(db, 'order_payments', { ...p, order_id: id });
       }
       return;
 

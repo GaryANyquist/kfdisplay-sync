@@ -351,3 +351,21 @@ test('a coupon replaces what it covers; a deleted coupon goes with its targets',
   await applyChange(gone, { entity: 'coupon', id: 'k1', version: 2, op: 'delete' });
   assert.deepEqual(gone.calls.map((c) => c.sql.split(' WHERE')[0]), ['DELETE FROM dbo.coupon_targets', 'DELETE FROM dbo.coupons']);
 });
+
+test('a split sale replaces its payments; an older register leaves them alone', async () => {
+  const db = fakeDb();
+  await applyChange(db, {
+    entity: 'order', id: 'o9', version: 1, op: 'upsert',
+    data: { id: 'o9', number: 9, created_at: '2026-10-23T18:00:00.000Z', shift_id: 's1', subtotal: 3000, discount_amount: 0,
+      tax: 0, tip: 300, total: 3300, payment_type: 'other', tender: 'split', payment_amount: 3300, status: 'completed', lines: [],
+      payments: [{ seq: 0, tender: 'cash', amount: 1000, tip: 0, tendered: 2000, change_due: 1000 },
+        { seq: 1, tender: 'card', amount: 2000, tip: 300, processor: 'square', processor_ref: 'pay_1', reference_id: 'o9_1' }] },
+  });
+  const sqls = db.calls.map((c) => c.sql.split(' (')[0].split(' WHERE')[0]);
+  assert.ok(sqls.includes('DELETE FROM dbo.order_payments'));
+  const pays = db.calls.filter((c) => c.sql.startsWith('INSERT INTO dbo.order_payments')).map((c) => [p(c).order_id, p(c).seq, p(c).tender, p(c).amount, p(c).tip, p(c).reference_id]);
+  assert.deepEqual(pays, [['o9', 0, 'cash', 1000, 0, null], ['o9', 1, 'card', 2000, 300, 'o9_1']]);
+  const old = fakeDb();
+  await applyChange(old, { entity: 'order', id: 'o8', version: 1, op: 'upsert', data: { id: 'o8', number: 8, created_at: '2026-10-23T18:00:00.000Z', shift_id: 's1', subtotal: 1, discount_amount: 0, tax: 0, tip: 0, total: 1, payment_type: 'cash', payment_amount: 1, status: 'completed', lines: [] } });
+  assert.ok(!old.calls.some((c) => c.sql.includes('order_payments')));
+});

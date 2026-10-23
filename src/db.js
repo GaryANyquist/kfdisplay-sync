@@ -101,11 +101,17 @@ export async function searchOrders(config, { since, until, limit }) {
   const mods = await req().query(
     `SELECT m.* FROM dbo.order_line_modifiers m JOIN dbo.order_lines l ON l.uid = m.line_uid WHERE l.order_id IN (${top})`
   );
+  // Split sales' payments (register 2.5.1); a database set up before setup 13 has none.
+  const payments = await req()
+    .query(`IF OBJECT_ID(N'dbo.order_payments', N'U') IS NOT NULL SELECT p.* FROM dbo.order_payments p WHERE p.order_id IN (${top})`)
+    .then((r) => r.recordset ?? [])
+    .catch(() => []);
   const regs = await pool.request().query('SELECT register_id, register_name FROM dbo.register_settings');
   return {
     orders: orders.recordset.map(isoRow),
     lines: lines.recordset,
     modifiers: mods.recordset,
+    payments,
     registers: regs.recordset.map((r) => ({ id: r.register_id, name: r.register_name ?? '' })),
   };
 }

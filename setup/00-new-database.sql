@@ -271,6 +271,26 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID(N'dbo.order_payments', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.order_payments (
+        order_id       nvarchar(64)  NOT NULL,
+        seq            int           NOT NULL,
+        tender         nvarchar(200) NOT NULL,
+        amount         int           NOT NULL,
+        tip            int           NOT NULL DEFAULT 0,
+        tendered       int           NULL,
+        change_due     int           NULL,
+        card_brand     nvarchar(200) NULL,
+        last4          nvarchar(200) NULL,
+        processor      nvarchar(200) NULL,
+        processor_ref  nvarchar(200) NULL,
+        reference_id   nvarchar(200) NULL,
+        PRIMARY KEY (order_id, seq)
+    );
+END
+GO
+
 IF OBJECT_ID(N'dbo.coupons', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.coupons (
@@ -328,8 +348,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.order_lines TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.order_line_modifiers TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.register_settings TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.register_wix_links TO register_sync;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.order_payments TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.coupons TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.coupon_targets TO register_sync;
 GO
 
-PRINT N'KFDisplay is ready: 17 tables, and register_sync can read and write them (nothing else).';
+PRINT N'KFDisplay is ready: 18 tables, and register_sync can read and write them (nothing else).';
