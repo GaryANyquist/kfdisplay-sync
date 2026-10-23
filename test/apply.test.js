@@ -369,3 +369,34 @@ test('a split sale replaces its payments; an older register leaves them alone', 
   await applyChange(old, { entity: 'order', id: 'o8', version: 1, op: 'upsert', data: { id: 'o8', number: 8, created_at: '2026-10-23T18:00:00.000Z', shift_id: 's1', subtotal: 1, discount_amount: 0, tax: 0, tip: 0, total: 1, payment_type: 'cash', payment_amount: 1, status: 'completed', lines: [] } });
   assert.ok(!old.calls.some((c) => c.sql.includes('order_payments')));
 });
+
+test('an open ticket: newer edits win, and a paid ticket never reopens', async () => {
+  const db = fakeDb();
+  await applyChange(db, {
+    entity: 'open_ticket', id: 't1', version: 2, op: 'upsert',
+    data: { number: 12, table_no: '5', created_at: '2026-10-23T18:00:00.000Z', updated_at: '2026-10-23T18:05:00.000Z',
+      register_id: 'reg_a', shift_id: 's', customer_name: null, data: '{"lines":[],"sent":{}}', status: 'open' },
+  });
+  const sql = db.calls[0].sql;
+  assert.match(sql, /^MERGE dbo\.open_tickets/);
+  assert.ok(sql.includes("WHEN MATCHED AND t.status = 'open' AND (s.updated_at >= t.updated_at OR s.status <> 'open') THEN UPDATE"));
+  assert.deepEqual([p(db.calls[0]).id, p(db.calls[0]).table_no, p(db.calls[0]).status], ['t1', '5', 'open']);
+  const gone = fakeDb();
+  await applyChange(gone, { entity: 'open_ticket', id: 't1', version: 3, op: 'delete' });
+  assert.equal(gone.calls.length, 0);
+});
+
+test('registers list every open ticket', async () => {
+  const key = 'test-key-that-is-long-enough-123';
+  const server = createServer({ syncKey: key }, { openTickets: async () => [{ id: 't1', status: 'open' }] });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const r = await fetch(`${base}/v1/open-tickets`, { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: '{}' });
+    assert.deepEqual(await r.json(), { tickets: [{ id: 't1', status: 'open' }] });
+    const no = await fetch(`${base}/v1/open-tickets`, { method: 'POST', body: '{}' });
+    assert.equal(no.status, 401);
+  } finally {
+    server.close();
+  }
+});

@@ -271,6 +271,23 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID(N'dbo.open_tickets', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.open_tickets (
+        id             nvarchar(64)   NOT NULL PRIMARY KEY,
+        number         int            NOT NULL,
+        table_no       nvarchar(200)  NULL,
+        created_at     datetime2(3)   NOT NULL,
+        updated_at     datetime2(3)   NOT NULL,
+        register_id    nvarchar(64)   NOT NULL,
+        shift_id       nvarchar(64)   NOT NULL,
+        customer_name  nvarchar(200)  NULL,
+        data           nvarchar(max)  NOT NULL,
+        status         nvarchar(200)  NOT NULL DEFAULT 'open'
+    );
+END
+GO
+
 IF OBJECT_ID(N'dbo.order_payments', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.order_payments (
@@ -348,9 +365,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.order_lines TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.order_line_modifiers TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.register_settings TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.register_wix_links TO register_sync;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.open_tickets TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.order_payments TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.coupons TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.coupon_targets TO register_sync;
 GO
 
-PRINT N'KFDisplay is ready: 18 tables, and register_sync can read and write them (nothing else).';
+PRINT N'KFDisplay is ready: 19 tables, and register_sync can read and write them (nothing else).';

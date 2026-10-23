@@ -100,6 +100,14 @@ export const TABLES = {
       price_delta: T.int, half: T.int,
     },
   },
+  // Orders sent to the kitchen and not paid yet (pay later, register 2.6.0); data is the register's JSON.
+  open_tickets: {
+    key: ['id'],
+    cols: {
+      id: T.id, number: T.int, table_no: T.text, created_at: T.date, updated_at: T.date, register_id: T.id, shift_id: T.id,
+      customer_name: T.text, data: T.max, status: T.text,
+    },
+  },
   // A sale paid several ways (register 2.5.1): each payment, in order. Sent with its order.
   order_payments: {
     key: ['order_id', 'seq'],
@@ -142,7 +150,7 @@ const MENU_TABLES = [
 
 export const ENTITIES = [
   'catalog', 'category', 'item', 'modifier_group', 'discount', 'auto_discount', 'shift', 'order',
-  'settings', 'wix_links', 'kitchen_status', 'order_status', 'coupon',
+  'settings', 'wix_links', 'kitchen_status', 'order_status', 'coupon', 'open_ticket',
 ];
 
 /** Checks and converts one value; throws a message the tablet shows if it's wrong. */
@@ -241,6 +249,21 @@ export async function applyChange(db, change) {
       await upsert(db, 'auto_discounts', row);
       for (const t of list(data, 'targets')) await insert(db, 'auto_discount_targets', { ...t, discount_id: id });
       return;
+
+    case 'open_ticket': {
+      // Any register may add to or pay a ticket: the newer edit wins, and a paid or voided ticket never reopens.
+      if (op === 'delete') return;
+      const names = Object.keys(TABLES.open_tickets.cols);
+      const sets = names.filter((c) => c !== 'id').map((c) => `t.${c} = s.${c}`).join(', ');
+      return db.exec(
+        `MERGE dbo.open_tickets WITH (HOLDLOCK) AS t\n` +
+          `USING (SELECT ${names.map((c) => `@${c} AS ${c}`).join(', ')}) AS s\n` +
+          'ON t.id = s.id\n' +
+          `WHEN MATCHED AND t.status = 'open' AND (s.updated_at >= t.updated_at OR s.status <> 'open') THEN UPDATE SET ${sets}\n` +
+          `WHEN NOT MATCHED THEN INSERT (${names.join(', ')}) VALUES (${names.map((c) => `s.${c}`).join(', ')});`,
+        params('open_tickets', row)
+      );
+    }
 
     case 'coupon':
       await del(db, 'DELETE FROM dbo.coupon_targets WHERE coupon_id = @id;', id);

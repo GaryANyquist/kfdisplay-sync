@@ -12,6 +12,7 @@
  *                    every register's sales in that time (Reports -> Transactions)
  *   POST /v1/order-status { ids: [...] } -> { orders: [{ id, status, refunded_at, refund_reason }] }
  *                    refunds given on another register; the register that took the sale pulls them
+ *   POST /v1/open-tickets   -> { tickets: [...] }      every register's unpaid (pay later) orders
  *   POST /v1/restart        -> { ok, restarting }     stops; start-sync.cmd starts it again
  *   GET  /v1/photos         -> { photos: [names] }   the photos in PHOTO_DIR
  *   GET  /v1/photos/<name>  -> the image itself       (KFIDisplay on another PC copies these)
@@ -25,7 +26,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 
 import { applyChange } from './apply.js';
-import { databaseName, inTransaction, kitchenStatus, orderStatus, searchOrders } from './db.js';
+import { databaseName, inTransaction, kitchenStatus, openTickets, orderStatus, searchOrders } from './db.js';
 import { imageKind, listPhotos, missingPhotos, readPhoto, savePhoto } from './photos.js';
 
 const MAX_BODY = 10 * 1024 * 1024;
@@ -83,6 +84,7 @@ export function createServer(cfg, deps = {}) {
   const kitchen = deps.kitchenStatus ?? ((ids) => kitchenStatus(cfg.sql, ids));
   const search = deps.searchOrders ?? ((q) => searchOrders(cfg.sql, q));
   const statuses = deps.orderStatus ?? ((ids) => orderStatus(cfg.sql, ids));
+  const tickets = deps.openTickets ?? (() => openTickets(cfg.sql));
 
   return http.createServer(async (req, res) => {
     try {
@@ -148,6 +150,10 @@ export function createServer(cfg, deps = {}) {
           return send(res, 400, { error: `since/until must be times and limit 1-${MAX_ORDERS}` });
         }
         return send(res, 200, await search({ since, until, limit }));
+      }
+
+      if (req.method === 'POST' && req.url === '/v1/open-tickets') {
+        return send(res, 200, { tickets: await tickets() });
       }
 
       if (req.method === 'POST' && req.url === '/v1/kitchen-status') {

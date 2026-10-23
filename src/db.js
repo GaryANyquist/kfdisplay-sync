@@ -130,3 +130,17 @@ export async function orderStatus(config, ids) {
   const r = await req.query(`SELECT id, status, refunded_at, refund_reason FROM dbo.orders WHERE id IN (${list})`);
   return r.recordset.map((o) => ({ id: o.id, status: o.status, refunded_at: iso(o.refunded_at), refund_reason: o.refund_reason ?? null }));
 }
+
+/**
+ * Every register's open tickets (pay later, register 2.6.0), and those closed in the last two days so a register still
+ * holding one open learns it was paid elsewhere. Times are ISO UTC. Empty on a database set up before setup 14.
+ */
+export async function openTickets(config) {
+  const pool = await getPool(config);
+  const r = await pool
+    .request()
+    .query(
+      "IF OBJECT_ID(N'dbo.open_tickets', N'U') IS NOT NULL SELECT * FROM dbo.open_tickets WHERE status = 'open' OR updated_at >= DATEADD(day, -2, SYSUTCDATETIME())"
+    );
+  return (r.recordset ?? []).map((t) => ({ ...t, created_at: iso(t.created_at), updated_at: iso(t.updated_at) }));
+}
