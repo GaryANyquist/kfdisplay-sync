@@ -271,6 +271,38 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID(N'dbo.coupons', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.coupons (
+        id            nvarchar(64)  NOT NULL PRIMARY KEY,
+        code          nvarchar(200) NOT NULL,
+        name          nvarchar(200) NOT NULL,
+        type          nvarchar(200) NOT NULL,
+        value         float         NOT NULL DEFAULT 0,
+        buy_qty       int           NULL,
+        get_qty       int           NULL,
+        min_subtotal  int           NULL,
+        one_item      int           NOT NULL DEFAULT 0,
+        starts_on     nvarchar(200) NULL,
+        ends_on       nvarchar(200) NULL,
+        active        int           NOT NULL DEFAULT 1,
+        sort_order    int           NOT NULL DEFAULT 0,
+        synced_at     datetime2(3)  NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+END
+GO
+
+IF OBJECT_ID(N'dbo.coupon_targets', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.coupon_targets (
+        coupon_id    nvarchar(64)  NOT NULL,
+        target_type  nvarchar(200) NOT NULL,
+        target_id    nvarchar(64)  NOT NULL,
+        PRIMARY KEY (coupon_id, target_type, target_id)
+    );
+END
+GO
+
 USE [master];
 IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'register_sync')
     CREATE LOGIN register_sync WITH PASSWORD = N'CHANGE_ME', CHECK_POLICY = ON, DEFAULT_DATABASE = [KFDisplay];
@@ -296,6 +328,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.order_lines TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.order_line_modifiers TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.register_settings TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.register_wix_links TO register_sync;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.coupons TO register_sync;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.coupon_targets TO register_sync;
 GO
 
-PRINT N'KFDisplay is ready: 15 tables, and register_sync can read and write them (nothing else).';
+PRINT N'KFDisplay is ready: 17 tables, and register_sync can read and write them (nothing else).';

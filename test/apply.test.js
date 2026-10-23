@@ -131,7 +131,8 @@ test('the catalog replaces every menu table', async () => {
     },
   });
   const deletes = db.calls.filter((c) => c.sql.startsWith('DELETE')).map((c) => c.sql);
-  assert.equal(deletes.length, 9);
+  assert.equal(deletes.length, 11);
+  assert.ok(deletes.includes('DELETE FROM dbo.coupons;') && deletes.includes('DELETE FROM dbo.coupon_targets;'));
   assert.ok(deletes.includes('DELETE FROM dbo.item_variants;'));
   const inserts = db.calls.filter((c) => c.sql.startsWith('INSERT')).map((c) => c.sql.split(' (')[0]);
   assert.deepEqual(inserts, ['INSERT INTO dbo.categories', 'INSERT INTO dbo.items']);
@@ -333,4 +334,20 @@ test('registers read every sale back, and pull refunds given elsewhere', async (
   } finally {
     server.close();
   }
+});
+
+test('a coupon replaces what it covers; a deleted coupon goes with its targets', async () => {
+  const db = fakeDb();
+  await applyChange(db, {
+    entity: 'coupon', id: 'k1', version: 1, op: 'upsert',
+    data: { code: 'SAVE10', name: 'Save ten', type: 'percent', value: 10, min_subtotal: 2000, one_item: 1, active: 1,
+      targets: [{ target_type: 'category', target_id: 'c1' }, { target_type: 'item', target_id: 'i9' }] },
+  });
+  assert.match(db.calls[0].sql, /^DELETE FROM dbo\.coupon_targets WHERE coupon_id = @id;$/);
+  assert.match(db.calls[1].sql, /^MERGE dbo\.coupons/);
+  assert.deepEqual([p(db.calls[1]).code, p(db.calls[1]).value, p(db.calls[1]).min_subtotal], ['SAVE10', 10, 2000]);
+  assert.deepEqual(db.calls.slice(2).map((c) => [p(c).coupon_id, p(c).target_type, p(c).target_id]), [['k1', 'category', 'c1'], ['k1', 'item', 'i9']]);
+  const gone = fakeDb();
+  await applyChange(gone, { entity: 'coupon', id: 'k1', version: 2, op: 'delete' });
+  assert.deepEqual(gone.calls.map((c) => c.sql.split(' WHERE')[0]), ['DELETE FROM dbo.coupon_targets', 'DELETE FROM dbo.coupons']);
 });

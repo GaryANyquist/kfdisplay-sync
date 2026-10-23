@@ -71,6 +71,9 @@ queues and its cached ticket.
 
 - **Kiosk and half-and-half:** `items.hide_on_kiosk`, `items.allow_modifier_split`; an option on one half of an item has
   `order_line_modifiers.half` = 1 or 2 (0 = the whole item).
+- **Coupons** (register 2.5.0): `coupons` and `coupon_targets` (made on a register, or copied from Wix with ids `wxk_`).
+  A sale keeps its coupon as its order discount (`orders.discount_name` "Coupon SAVE10"). Run `setup/12-coupons.sql`
+  before starting this version of the service on a database set up earlier.
 - **Option limits:** `modifier_groups.min_select` / `max_select` (0 = no limit).
 
 - **Item descriptions:** `items.description` is for the KFDisplay app (menu

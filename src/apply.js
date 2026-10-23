@@ -100,6 +100,19 @@ export const TABLES = {
       price_delta: T.int, half: T.int,
     },
   },
+  // Coupons (register 2.5.0): made on a register or copied from Wix (ids wxk_...), with what each covers.
+  coupons: {
+    key: ['id'],
+    cols: {
+      id: T.id, code: T.text, name: T.text, type: T.text, value: T.float, buy_qty: T.int, get_qty: T.int,
+      min_subtotal: T.int, one_item: T.int, starts_on: T.text, ends_on: T.text, active: T.int, sort_order: T.int,
+    },
+    synced: true,
+  },
+  coupon_targets: {
+    key: ['coupon_id', 'target_type', 'target_id'],
+    cols: { coupon_id: T.id, target_type: T.text, target_id: T.id },
+  },
   // Each register's settings (no keys or passwords: those never leave the tablet), as JSON.
   register_settings: {
     key: ['register_id'],
@@ -114,13 +127,14 @@ export const TABLES = {
 };
 
 const MENU_TABLES = [
+  'coupon_targets', 'coupons',
   'auto_discount_targets', 'auto_discounts',
   'item_modifier_groups', 'item_variants', 'modifier_options', 'modifier_groups', 'items', 'categories', 'discounts',
 ];
 
 export const ENTITIES = [
   'catalog', 'category', 'item', 'modifier_group', 'discount', 'auto_discount', 'shift', 'order',
-  'settings', 'wix_links', 'kitchen_status', 'order_status',
+  'settings', 'wix_links', 'kitchen_status', 'order_status', 'coupon',
 ];
 
 /** Checks and converts one value; throws a message the tablet shows if it's wrong. */
@@ -218,6 +232,13 @@ export async function applyChange(db, change) {
       if (op === 'delete') return del(db, 'DELETE FROM dbo.auto_discounts WHERE id = @id;', id);
       await upsert(db, 'auto_discounts', row);
       for (const t of list(data, 'targets')) await insert(db, 'auto_discount_targets', { ...t, discount_id: id });
+      return;
+
+    case 'coupon':
+      await del(db, 'DELETE FROM dbo.coupon_targets WHERE coupon_id = @id;', id);
+      if (op === 'delete') return del(db, 'DELETE FROM dbo.coupons WHERE id = @id;', id);
+      await upsert(db, 'coupons', row);
+      for (const t of list(data, 'targets')) await insert(db, 'coupon_targets', { ...t, coupon_id: id });
       return;
 
     case 'item':
