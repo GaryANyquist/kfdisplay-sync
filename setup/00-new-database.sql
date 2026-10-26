@@ -201,6 +201,11 @@ BEGIN
         processor        nvarchar(20)   NULL,
         processor_ref    nvarchar(200)  NULL,
         register_id      nvarchar(64)   NULL,
+        delivery_fee     int            NOT NULL DEFAULT 0,
+        customer_id      nvarchar(64)   NULL,
+        delivery_phone   nvarchar(200)  NULL,
+        delivery_address nvarchar(1000) NULL,
+        delivery_notes   nvarchar(1000) NULL,
         order_up_at      datetime2(3)   NULL,
         paged_at         datetime2(3)   NULL,
         completed_at     datetime2(3)   NULL,
@@ -270,6 +275,21 @@ BEGIN
         image_url    nvarchar(1000) NULL
     );
     CREATE INDEX idx_wix_links_register ON dbo.register_wix_links(register_id);
+END
+GO
+
+IF OBJECT_ID(N'dbo.customers', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.customers (
+        id          nvarchar(64)   NOT NULL PRIMARY KEY,
+        name        nvarchar(200)  NOT NULL,
+        phone       nvarchar(200)  NULL,
+        address     nvarchar(1000) NULL,
+        notes       nvarchar(1000) NULL,
+        created_at  nvarchar(200)  NULL,
+        updated_at  nvarchar(200)  NULL,
+        synced_at   datetime2(3)   NOT NULL DEFAULT SYSUTCDATETIME()
+    );
 END
 GO
 
@@ -371,6 +391,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.open_tickets TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.order_payments TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.coupons TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.coupon_targets TO register_sync;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.customers TO register_sync;
 GO
 
-PRINT N'KFDisplay is ready: 19 tables, and register_sync can read and write them (nothing else).';
+PRINT N'KFDisplay is ready: 20 tables, and register_sync can read and write them (nothing else).';

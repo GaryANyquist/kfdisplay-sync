@@ -78,6 +78,7 @@ export const TABLES = {
       card_brand: T.text, last4: T.text, payment_note: T.long, status: T.text,
       refunded_at: T.date, refund_reason: T.long, pager_number: T.text, tender: T.text,
       processor: T.text, processor_ref: T.text, register_id: T.id,
+      delivery_fee: T.int, customer_id: T.id, delivery_phone: T.text, delivery_address: T.long, delivery_notes: T.long,
     },
     synced: true,
     // A sale refunded here from another register (entity order_status) stays refunded when the register that took
@@ -99,6 +100,14 @@ export const TABLES = {
       line_uid: T.id, group_id: T.id, group_name: T.text, option_id: T.id, option_name: T.text,
       price_delta: T.int, half: T.int,
     },
+  },
+  // Delivery customers saved on a register (register 2.9.0), found again by phone.
+  customers: {
+    key: ['id'],
+    cols: {
+      id: T.id, name: T.text, phone: T.text, address: T.long, notes: T.long, created_at: T.text, updated_at: T.text,
+    },
+    synced: true,
   },
   // Orders sent to the kitchen and not paid yet (pay later, register 2.6.0); data is the register's JSON.
   open_tickets: {
@@ -150,7 +159,7 @@ const MENU_TABLES = [
 
 export const ENTITIES = [
   'catalog', 'category', 'item', 'modifier_group', 'discount', 'auto_discount', 'shift', 'order',
-  'settings', 'wix_links', 'kitchen_status', 'order_status', 'coupon', 'open_ticket',
+  'settings', 'wix_links', 'kitchen_status', 'order_status', 'coupon', 'open_ticket', 'customer',
 ];
 
 /** Checks and converts one value; throws a message the tablet shows if it's wrong. */
@@ -264,6 +273,10 @@ export async function applyChange(db, change) {
         params('open_tickets', row)
       );
     }
+
+    case 'customer':
+      if (op === 'delete') return del(db, 'DELETE FROM dbo.customers WHERE id = @id;', id);
+      return upsert(db, 'customers', row);
 
     case 'coupon':
       await del(db, 'DELETE FROM dbo.coupon_targets WHERE coupon_id = @id;', id);
