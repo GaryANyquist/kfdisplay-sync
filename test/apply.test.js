@@ -400,3 +400,35 @@ test('registers list every open ticket', async () => {
     server.close();
   }
 });
+
+test('a customer: the newer copy wins, a deletion is marked and a later save brings it back', async () => {
+  const db = fakeDb();
+  await applyChange(db, {
+    entity: 'customer', id: 'cu_1', version: 1, op: 'upsert',
+    data: { name: 'Jane', phone: '(555) 123-4567', address: '1 A St', notes: null, created_at: 'a', updated_at: '2026-10-26T10:00:00.000Z' },
+  });
+  const sql = db.calls[0].sql;
+  assert.match(sql, /^MERGE dbo\.customers/);
+  assert.ok(sql.includes("WHEN MATCHED AND ISNULL(s.updated_at, N'') >= ISNULL(t.updated_at, N'') THEN UPDATE"));
+  assert.ok(sql.includes("t.deleted_at = CASE WHEN ISNULL(s.updated_at, N'') > ISNULL(t.deleted_at, N'') THEN NULL ELSE t.deleted_at END"));
+  assert.deepEqual([p(db.calls[0]).id, p(db.calls[0]).name], ['cu_1', 'Jane']);
+  const gone = fakeDb();
+  await applyChange(gone, { entity: 'customer', id: 'cu_1', version: 2, op: 'delete' });
+  assert.match(gone.calls[0].sql, /^UPDATE dbo\.customers SET deleted_at = /);
+  assert.ok(!gone.calls[0].sql.includes('DELETE'));
+});
+
+test('registers list every customer', async () => {
+  const key = 'test-key-that-is-long-enough-123';
+  const server = createServer({ syncKey: key }, { customers: async () => [{ id: 'cu_1', name: 'Jane', deleted_at: null }] });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const r = await fetch(`${base}/v1/customers`, { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: '{}' });
+    assert.deepEqual(await r.json(), { customers: [{ id: 'cu_1', name: 'Jane', deleted_at: null }] });
+    const no = await fetch(`${base}/v1/customers`, { method: 'POST', body: '{}' });
+    assert.equal(no.status, 401);
+  } finally {
+    server.close();
+  }
+});

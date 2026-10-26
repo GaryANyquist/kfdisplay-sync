@@ -274,9 +274,30 @@ export async function applyChange(db, change) {
       );
     }
 
-    case 'customer':
-      if (op === 'delete') return del(db, 'DELETE FROM dbo.customers WHERE id = @id;', id);
-      return upsert(db, 'customers', row);
+    case 'customer': {
+      // Shared between registers (register 2.9.2): a deletion is marked, not removed, so the other registers learn it;
+      // the newer copy wins, and saving it again after the deletion brings it back.
+      if (op === 'delete') {
+        return del(
+          db,
+          "UPDATE dbo.customers SET deleted_at = CONVERT(nvarchar(23), SYSUTCDATETIME(), 126) + 'Z', synced_at = SYSUTCDATETIME() WHERE id = @id;",
+          id
+        );
+      }
+      requireKey('customers', row);
+      const names = Object.keys(TABLES.customers.cols);
+      const sets = names.filter((c) => c !== 'id').map((c) => `t.${c} = s.${c}`).join(', ');
+      return db.exec(
+        `MERGE dbo.customers WITH (HOLDLOCK) AS t\n` +
+          `USING (SELECT ${names.map((c) => `@${c} AS ${c}`).join(', ')}) AS s\n` +
+          'ON t.id = s.id\n' +
+          `WHEN MATCHED AND ISNULL(s.updated_at, N'') >= ISNULL(t.updated_at, N'') THEN UPDATE SET ${sets}, ` +
+          "t.deleted_at = CASE WHEN ISNULL(s.updated_at, N'') > ISNULL(t.deleted_at, N'') THEN NULL ELSE t.deleted_at END, " +
+          't.synced_at = SYSUTCDATETIME()\n' +
+          `WHEN NOT MATCHED THEN INSERT (${names.join(', ')}) VALUES (${names.map((c) => `s.${c}`).join(', ')});`,
+        params('customers', row)
+      );
+    }
 
     case 'coupon':
       await del(db, 'DELETE FROM dbo.coupon_targets WHERE coupon_id = @id;', id);

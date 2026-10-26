@@ -132,6 +132,18 @@ export async function orderStatus(config, ids) {
 }
 
 /**
+ * Every register's delivery customers (register 2.9.2), deleted ones marked with deleted_at, so each register can find
+ * the others' customers and drop the ones deleted elsewhere. Empty on a database set up before setup 17.
+ */
+export async function customers(config) {
+  const pool = await getPool(config);
+  const r = await pool
+    .request()
+    .query("IF OBJECT_ID(N'dbo.customers', N'U') IS NOT NULL SELECT * FROM dbo.customers");
+  return (r.recordset ?? []).map(({ synced_at, ...c }) => ({ deleted_at: null, ...c }));
+}
+
+/**
  * Every register's open tickets (pay later, register 2.6.0), and those closed in the last two days so a register still
  * holding one open learns it was paid elsewhere. Times are ISO UTC. Empty on a database set up before setup 14.
  */

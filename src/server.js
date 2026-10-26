@@ -13,6 +13,7 @@
  *   POST /v1/order-status { ids: [...] } -> { orders: [{ id, status, refunded_at, refund_reason }] }
  *                    refunds given on another register; the register that took the sale pulls them
  *   POST /v1/open-tickets   -> { tickets: [...] }      every register's unpaid (pay later) orders
+ *   POST /v1/customers      -> { customers: [...] }    every register's delivery customers (deleted ones marked)
  *   POST /v1/restart        -> { ok, restarting }     stops; start-sync.cmd starts it again
  *   GET  /v1/photos         -> { photos: [names] }   the photos in PHOTO_DIR
  *   GET  /v1/photos/<name>  -> the image itself       (KFIDisplay on another PC copies these)
@@ -26,7 +27,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 
 import { applyChange } from './apply.js';
-import { databaseName, inTransaction, kitchenStatus, openTickets, orderStatus, searchOrders } from './db.js';
+import { customers, databaseName, inTransaction, kitchenStatus, openTickets, orderStatus, searchOrders } from './db.js';
 import { imageKind, listPhotos, missingPhotos, readPhoto, savePhoto } from './photos.js';
 
 const MAX_BODY = 10 * 1024 * 1024;
@@ -85,6 +86,7 @@ export function createServer(cfg, deps = {}) {
   const search = deps.searchOrders ?? ((q) => searchOrders(cfg.sql, q));
   const statuses = deps.orderStatus ?? ((ids) => orderStatus(cfg.sql, ids));
   const tickets = deps.openTickets ?? (() => openTickets(cfg.sql));
+  const people = deps.customers ?? (() => customers(cfg.sql));
 
   return http.createServer(async (req, res) => {
     try {
@@ -154,6 +156,10 @@ export function createServer(cfg, deps = {}) {
 
       if (req.method === 'POST' && req.url === '/v1/open-tickets') {
         return send(res, 200, { tickets: await tickets() });
+      }
+
+      if (req.method === 'POST' && req.url === '/v1/customers') {
+        return send(res, 200, { customers: await people() });
       }
 
       if (req.method === 'POST' && req.url === '/v1/kitchen-status') {

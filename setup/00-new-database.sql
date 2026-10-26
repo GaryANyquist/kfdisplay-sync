@@ -288,6 +288,7 @@ BEGIN
         notes       nvarchar(1000) NULL,
         created_at  nvarchar(200)  NULL,
         updated_at  nvarchar(200)  NULL,
+        deleted_at  nvarchar(200)  NULL,
         synced_at   datetime2(3)   NOT NULL DEFAULT SYSUTCDATETIME()
     );
 END
