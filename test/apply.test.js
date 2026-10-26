@@ -464,3 +464,16 @@ test('the clear-register route needs the key and a register id', async () => {
     server.close();
   }
 });
+
+test('the Wix menus replace the old ones whole, with their categories in order and items', async () => {
+  const db = fakeDb();
+  await applyChange(db, {
+    entity: 'menus', id: 'all', version: 1, op: 'upsert',
+    data: { menus: [{ id: 'wxm_a', name: 'Truck', visible: 1, sort_order: 0, data: '{"categoryIds":["c2","c1"],"itemIds":["i1","i1","i2"]}' }] },
+  });
+  assert.match(db.calls[0].sql, /^DELETE FROM dbo\.menu_items; DELETE FROM dbo\.menu_categories; DELETE FROM dbo\.menus;$/);
+  const ins = db.calls.slice(1).map((c) => [c.sql.match(/INTO dbo\.(\w+)/)[1], p(c)]);
+  assert.deepEqual(ins.map(([t2]) => t2), ['menus', 'menu_categories', 'menu_categories', 'menu_items', 'menu_items']);
+  assert.deepEqual(ins[1][1], { menu_id: 'wxm_a', category_id: 'c2', sort_order: 0 });
+  assert.deepEqual(ins[0][1], { id: 'wxm_a', name: 'Truck', visible: 1, sort_order: 0 });
+});

@@ -101,6 +101,20 @@ export const TABLES = {
       price_delta: T.int, half: T.int,
     },
   },
+  // The Wix menus (register 2.9.11): each menu, its categories in order, its items. KFIDisplay picks one to show.
+  menus: {
+    key: ['id'],
+    cols: { id: T.id, name: T.text, visible: T.int, sort_order: T.int },
+    synced: true,
+  },
+  menu_categories: {
+    key: ['menu_id', 'category_id'],
+    cols: { menu_id: T.id, category_id: T.id, sort_order: T.int },
+  },
+  menu_items: {
+    key: ['menu_id', 'item_id'],
+    cols: { menu_id: T.id, item_id: T.id },
+  },
   // Delivery customers saved on a register (register 2.9.0), found again by phone.
   customers: {
     key: ['id'],
@@ -159,7 +173,7 @@ const MENU_TABLES = [
 
 export const ENTITIES = [
   'catalog', 'category', 'item', 'modifier_group', 'discount', 'auto_discount', 'shift', 'order',
-  'settings', 'wix_links', 'kitchen_status', 'order_status', 'coupon', 'open_ticket', 'customer',
+  'settings', 'wix_links', 'kitchen_status', 'order_status', 'coupon', 'open_ticket', 'customer', 'menus',
 ];
 
 /** Checks and converts one value; throws a message the tablet shows if it's wrong. */
@@ -272,6 +286,25 @@ export async function applyChange(db, change) {
           `WHEN NOT MATCHED THEN INSERT (${names.join(', ')}) VALUES (${names.map((c) => `s.${c}`).join(', ')});`,
         params('open_tickets', row)
       );
+    }
+
+    case 'menus': {
+      // Every menu, whole: the Wix menus are the same for every register, so the latest send replaces them.
+      if (op === 'delete') return;
+      await db.exec('DELETE FROM dbo.menu_items; DELETE FROM dbo.menu_categories; DELETE FROM dbo.menus;', []);
+      for (const m of list(data, 'menus')) {
+        let d = {};
+        try {
+          d = typeof m.data === 'string' ? JSON.parse(m.data) : m.data || {};
+        } catch {
+          d = {};
+        }
+        await insert(db, 'menus', { id: m.id, name: m.name, visible: m.visible ? 1 : 0, sort_order: m.sort_order ?? 0 });
+        const cats = Array.isArray(d.categoryIds) ? d.categoryIds : [];
+        for (const [k, c] of cats.entries()) await insert(db, 'menu_categories', { menu_id: m.id, category_id: c, sort_order: k });
+        for (const i of new Set(Array.isArray(d.itemIds) ? d.itemIds : [])) await insert(db, 'menu_items', { menu_id: m.id, item_id: i });
+      }
+      return;
     }
 
     case 'customer': {

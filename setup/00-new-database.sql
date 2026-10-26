@@ -278,6 +278,39 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID(N'dbo.menus', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.menus (
+        id          nvarchar(64)   NOT NULL PRIMARY KEY,
+        name        nvarchar(200)  NOT NULL,
+        visible     int            NOT NULL DEFAULT 1,
+        sort_order  int            NOT NULL DEFAULT 0,
+        synced_at   datetime2(3)   NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+END
+GO
+
+IF OBJECT_ID(N'dbo.menu_categories', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.menu_categories (
+        menu_id      nvarchar(64)  NOT NULL,
+        category_id  nvarchar(64)  NOT NULL,
+        sort_order   int           NOT NULL DEFAULT 0,
+        PRIMARY KEY (menu_id, category_id)
+    );
+END
+GO
+
+IF OBJECT_ID(N'dbo.menu_items', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.menu_items (
+        menu_id  nvarchar(64)  NOT NULL,
+        item_id  nvarchar(64)  NOT NULL,
+        PRIMARY KEY (menu_id, item_id)
+    );
+END
+GO
+
 IF OBJECT_ID(N'dbo.customers', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.customers (
@@ -393,6 +426,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.order_payments TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.coupons TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.coupon_targets TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.customers TO register_sync;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.menus TO register_sync;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.menu_categories TO register_sync;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.menu_items TO register_sync;
 GO
 
-PRINT N'KFDisplay is ready: 20 tables, and register_sync can read and write them (nothing else).';
+PRINT N'KFDisplay is ready: 23 tables, and register_sync can read and write them (nothing else).';
