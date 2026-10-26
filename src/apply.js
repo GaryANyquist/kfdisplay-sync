@@ -396,3 +396,32 @@ export async function applyChange(db, change) {
       return;
   }
 }
+
+/**
+ * Clear sales history on a register (register 2.9.8, Gary 2026-10-26): that register's sales (with their lines,
+ * options and payments), its drawers and its open orders go from the PC too. Other registers' sales stay. Drawers
+ * carry no register id, so they are the ones this register's sales were in, plus the ones it names.
+ */
+export async function clearRegister(db, registerId, shiftIds = []) {
+  if (typeof registerId !== 'string' || !registerId || registerId.length > 64) throw new Error('registerId missing');
+  const ids = shiftIds.filter((s) => typeof s === 'string' && s && s.length <= 64).slice(0, 2000);
+  const params = [{ name: 'reg', type: T.id, value: registerId }, ...ids.map((s, i) => ({ name: `s${i}`, type: T.id, value: s }))];
+  const named = ids.length ? ` OR id IN (${ids.map((_, i) => `@s${i}`).join(', ')})` : '';
+  const counts = await db.exec(
+    'DECLARE @shifts TABLE (id nvarchar(64) PRIMARY KEY);\n' +
+      `INSERT INTO @shifts SELECT id FROM dbo.shifts WHERE id IN (SELECT shift_id FROM dbo.orders WHERE register_id = @reg)${named};\n` +
+      'DELETE m FROM dbo.order_line_modifiers m JOIN dbo.order_lines l ON l.uid = m.line_uid JOIN dbo.orders o ON o.id = l.order_id WHERE o.register_id = @reg;\n' +
+      'DELETE l FROM dbo.order_lines l JOIN dbo.orders o ON o.id = l.order_id WHERE o.register_id = @reg;\n' +
+      "IF OBJECT_ID(N'dbo.order_payments', N'U') IS NOT NULL DELETE p FROM dbo.order_payments p JOIN dbo.orders o ON o.id = p.order_id WHERE o.register_id = @reg;\n" +
+      'DELETE FROM dbo.orders WHERE register_id = @reg;\n' +
+      'DECLARE @orders int = @@ROWCOUNT;\n' +
+      'DELETE FROM dbo.shifts WHERE id IN (SELECT id FROM @shifts);\n' +
+      'DECLARE @drawers int = @@ROWCOUNT;\n' +
+      'DECLARE @tickets int = 0;\n' +
+      "IF OBJECT_ID(N'dbo.open_tickets', N'U') IS NOT NULL BEGIN DELETE FROM dbo.open_tickets WHERE register_id = @reg; SET @tickets = @@ROWCOUNT; END\n" +
+      'SELECT @orders AS orders, @drawers AS drawers, @tickets AS tickets;',
+    params
+  );
+  const row = counts?.recordset?.[0] ?? {};
+  return { orders: row.orders ?? 0, drawers: row.drawers ?? 0, tickets: row.tickets ?? 0 };
+}

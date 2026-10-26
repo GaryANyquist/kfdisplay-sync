@@ -14,6 +14,8 @@
  *                    refunds given on another register; the register that took the sale pulls them
  *   POST /v1/open-tickets   -> { tickets: [...] }      every register's unpaid (pay later) orders
  *   POST /v1/customers      -> { customers: [...] }    every register's delivery customers (deleted ones marked)
+ *   POST /v1/clear-register { registerId, shiftIds } -> { orders, drawers, tickets }
+ *                    Clear sales history on a register: its sales, drawers and open orders go from here too
  *   POST /v1/restart        -> { ok, restarting }     stops; start-sync.cmd starts it again
  *   GET  /v1/photos         -> { photos: [names] }   the photos in PHOTO_DIR
  *   GET  /v1/photos/<name>  -> the image itself       (KFIDisplay on another PC copies these)
@@ -26,7 +28,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 
-import { applyChange } from './apply.js';
+import { applyChange, clearRegister } from './apply.js';
 import { customers, databaseName, inTransaction, kitchenStatus, openTickets, orderStatus, searchOrders } from './db.js';
 import { imageKind, listPhotos, missingPhotos, readPhoto, savePhoto } from './photos.js';
 
@@ -87,6 +89,15 @@ export function createServer(cfg, deps = {}) {
   const statuses = deps.orderStatus ?? ((ids) => orderStatus(cfg.sql, ids));
   const tickets = deps.openTickets ?? (() => openTickets(cfg.sql));
   const people = deps.customers ?? (() => customers(cfg.sql));
+  const clear =
+    deps.clearRegister ??
+    (async (registerId, shiftIds) => {
+      let out;
+      await inTransaction(cfg.sql, async (db) => {
+        out = await clearRegister(db, registerId, shiftIds);
+      });
+      return out;
+    });
 
   return http.createServer(async (req, res) => {
     try {
@@ -156,6 +167,23 @@ export function createServer(cfg, deps = {}) {
 
       if (req.method === 'POST' && req.url === '/v1/open-tickets') {
         return send(res, 200, { tickets: await tickets() });
+      }
+
+      if (req.method === 'POST' && req.url === '/v1/clear-register') {
+        let body;
+        try {
+          body = JSON.parse(await readBody(req));
+        } catch (err) {
+          return send(res, err.status ?? 400, { error: err.status ? err.message : 'body is not JSON' });
+        }
+        const registerId = body?.registerId;
+        const shiftIds = Array.isArray(body?.shiftIds) ? body.shiftIds : [];
+        if (typeof registerId !== 'string' || !registerId || registerId.length > 64) {
+          return send(res, 400, { error: 'registerId missing' });
+        }
+        const done = await clear(registerId, shiftIds);
+        console.log(`cleared register ${registerId}: ${done.orders} sales, ${done.drawers} drawers, ${done.tickets} open orders`);
+        return send(res, 200, done);
       }
 
       if (req.method === 'POST' && req.url === '/v1/customers') {

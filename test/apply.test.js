@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { applyChange, TABLES } from '../src/apply.js';
+import { clearRegister, applyChange, TABLES } from '../src/apply.js';
 import { applyBatch, authorized, createServer } from '../src/server.js';
 
 /** A fake database that records each statement and its parameters. */
@@ -427,6 +427,38 @@ test('registers list every customer', async () => {
     const r = await fetch(`${base}/v1/customers`, { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: '{}' });
     assert.deepEqual(await r.json(), { customers: [{ id: 'cu_1', name: 'Jane', deleted_at: null }] });
     const no = await fetch(`${base}/v1/customers`, { method: 'POST', body: '{}' });
+    assert.equal(no.status, 401);
+  } finally {
+    server.close();
+  }
+});
+
+test("clearing a register removes only that register's sales, drawers and open orders", async () => {
+  const db = { calls: [], exec: async (sql, params) => { db.calls.push({ sql, params }); return { recordset: [{ orders: 3, drawers: 1, tickets: 0 }] }; } };
+  const r = await clearRegister(db, 'reg_a', ['sh_1']);
+  assert.deepEqual(r, { orders: 3, drawers: 1, tickets: 0 });
+  const sql = db.calls[0].sql;
+  assert.ok(sql.includes('DELETE FROM dbo.orders WHERE register_id = @reg;'));
+  assert.ok(sql.includes('DELETE FROM dbo.open_tickets WHERE register_id = @reg;'));
+  assert.ok(sql.includes('OR id IN (@s0)'));
+  assert.ok(!/DELETE FROM dbo\.(orders|shifts|open_tickets);/.test(sql), 'never everything');
+  assert.deepEqual(db.calls[0].params.map((p) => [p.name, p.value]), [['reg', 'reg_a'], ['s0', 'sh_1']]);
+  await assert.rejects(clearRegister(db, '', []), /registerId/);
+});
+
+test('the clear-register route needs the key and a register id', async () => {
+  const key = 'test-key-that-is-long-enough-123';
+  const seen = [];
+  const server = createServer({ syncKey: key }, { clearRegister: async (r, s) => { seen.push([r, s]); return { orders: 2, drawers: 1, tickets: 1 }; } });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const ok = await fetch(`${base}/v1/clear-register`, { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: JSON.stringify({ registerId: 'reg_a', shiftIds: ['sh_1'] }) });
+    assert.deepEqual(await ok.json(), { orders: 2, drawers: 1, tickets: 1 });
+    assert.deepEqual(seen, [['reg_a', ['sh_1']]]);
+    const none = await fetch(`${base}/v1/clear-register`, { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: '{}' });
+    assert.equal(none.status, 400);
+    const no = await fetch(`${base}/v1/clear-register`, { method: 'POST', body: '{}' });
     assert.equal(no.status, 401);
   } finally {
     server.close();
