@@ -136,6 +136,7 @@ BEGIN
         ends_on     nvarchar(10)  NULL,
         sale_price  int           NULL,
         schedule    nvarchar(max) NULL,
+        conditions  nvarchar(max) NULL,
         synced_at   datetime2(3)  NOT NULL DEFAULT SYSUTCDATETIME()
     );
 END
