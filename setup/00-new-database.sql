@@ -311,6 +311,16 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID(N'dbo.board_settings', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.board_settings (
+        name        nvarchar(64)   NOT NULL PRIMARY KEY,
+        value       nvarchar(max)  NULL,
+        updated_at  datetime2(3)   NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+END
+GO
+
 IF OBJECT_ID(N'dbo.customers', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.customers (
@@ -429,6 +439,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.customers TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.menus TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.menu_categories TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.menu_items TO register_sync;
+GRANT SELECT, INSERT, UPDATE ON dbo.board_settings TO register_sync;
 GO
 
-PRINT N'KFDisplay is ready: 23 tables, and register_sync can read and write them (nothing else).';
+PRINT N'KFDisplay is ready: 24 tables, and register_sync can read and write them (nothing else).';

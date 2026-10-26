@@ -477,3 +477,21 @@ test('the Wix menus replace the old ones whole, with their categories in order a
   assert.deepEqual(ins[1][1], { menu_id: 'wxm_a', category_id: 'c2', sort_order: 0 });
   assert.deepEqual(ins[0][1], { id: 'wxm_a', name: 'Truck', visible: 1, sort_order: 0 });
 });
+
+test("a register reads and sets the menu board's menu", async () => {
+  const key = 'test-key-that-is-long-enough-123';
+  let menu = '';
+  const server = createServer({ syncKey: key }, { boardMenu: async () => menu, setBoardMenu: async (id) => { menu = id; } });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (path, body) => fetch(`${base}${path}`, { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: JSON.stringify(body ?? {}) });
+  try {
+    assert.deepEqual(await (await post('/v1/board')).json(), { menuId: '' });
+    assert.deepEqual(await (await post('/v1/board/menu', { menuId: 'wxm_b' })).json(), { menuId: 'wxm_b' });
+    assert.deepEqual(await (await post('/v1/board')).json(), { menuId: 'wxm_b' });
+    assert.equal((await post('/v1/board/menu', { menuId: 5 })).status, 400);
+    assert.equal((await fetch(`${base}/v1/board`, { method: 'POST', body: '{}' })).status, 401);
+  } finally {
+    server.close();
+  }
+});

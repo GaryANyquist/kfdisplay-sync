@@ -144,6 +144,30 @@ export async function customers(config) {
 }
 
 /**
+ * The menu the KFIDisplay menu board shows (register 2.9.12, Gary 2026-10-26: set from a register): a menus.id, or ""
+ * for all menus. Empty on a database set up before setup 20.
+ */
+export async function boardMenu(config) {
+  const pool = await getPool(config);
+  const r = await pool
+    .request()
+    .query("IF OBJECT_ID(N'dbo.board_settings', N'U') IS NOT NULL SELECT value FROM dbo.board_settings WHERE name = N'menu'");
+  return r.recordset?.[0]?.value ?? '';
+}
+
+export async function setBoardMenu(config, menuId) {
+  const pool = await getPool(config);
+  await pool
+    .request()
+    .input('v', sql.NVarChar(64), menuId)
+    .query(
+      "MERGE dbo.board_settings WITH (HOLDLOCK) AS t USING (SELECT N'menu' AS name, @v AS value) AS s ON t.name = s.name " +
+        'WHEN MATCHED THEN UPDATE SET value = s.value, updated_at = SYSUTCDATETIME() ' +
+        'WHEN NOT MATCHED THEN INSERT (name, value) VALUES (s.name, s.value);'
+    );
+}
+
+/**
  * Every register's open tickets (pay later, register 2.6.0), and those closed in the last two days so a register still
  * holding one open learns it was paid elsewhere. Times are ISO UTC. Empty on a database set up before setup 14.
  */

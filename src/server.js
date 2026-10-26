@@ -14,6 +14,8 @@
  *                    refunds given on another register; the register that took the sale pulls them
  *   POST /v1/open-tickets   -> { tickets: [...] }      every register's unpaid (pay later) orders
  *   POST /v1/customers      -> { customers: [...] }    every register's delivery customers (deleted ones marked)
+ *   POST /v1/board          -> { menuId }               the menu the KFIDisplay board shows ("" = all menus)
+ *   POST /v1/board/menu { menuId } -> { menuId }        sets it (from a register's Settings)
  *   POST /v1/clear-register { registerId, shiftIds } -> { orders, drawers, tickets }
  *                    Clear sales history on a register: its sales, drawers and open orders go from here too
  *   POST /v1/restart        -> { ok, restarting }     stops; start-sync.cmd starts it again
@@ -29,7 +31,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 
 import { applyChange, clearRegister } from './apply.js';
-import { customers, databaseName, inTransaction, kitchenStatus, openTickets, orderStatus, searchOrders } from './db.js';
+import { boardMenu, customers, databaseName, setBoardMenu, inTransaction, kitchenStatus, openTickets, orderStatus, searchOrders } from './db.js';
 import { imageKind, listPhotos, missingPhotos, readPhoto, savePhoto } from './photos.js';
 
 const MAX_BODY = 10 * 1024 * 1024;
@@ -89,6 +91,8 @@ export function createServer(cfg, deps = {}) {
   const statuses = deps.orderStatus ?? ((ids) => orderStatus(cfg.sql, ids));
   const tickets = deps.openTickets ?? (() => openTickets(cfg.sql));
   const people = deps.customers ?? (() => customers(cfg.sql));
+  const board = deps.boardMenu ?? (() => boardMenu(cfg.sql));
+  const setBoard = deps.setBoardMenu ?? ((id) => setBoardMenu(cfg.sql, id));
   const clear =
     deps.clearRegister ??
     (async (registerId, shiftIds) => {
@@ -184,6 +188,24 @@ export function createServer(cfg, deps = {}) {
         const done = await clear(registerId, shiftIds);
         console.log(`cleared register ${registerId}: ${done.orders} sales, ${done.drawers} drawers, ${done.tickets} open orders`);
         return send(res, 200, done);
+      }
+
+      if (req.method === 'POST' && req.url === '/v1/board') {
+        return send(res, 200, { menuId: await board() });
+      }
+
+      if (req.method === 'POST' && req.url === '/v1/board/menu') {
+        let body;
+        try {
+          body = JSON.parse(await readBody(req));
+        } catch (err) {
+          return send(res, err.status ?? 400, { error: err.status ? err.message : 'body is not JSON' });
+        }
+        const menuId = body?.menuId;
+        if (typeof menuId !== 'string' || menuId.length > 64) return send(res, 400, { error: 'menuId must be a menu id or ""' });
+        await setBoard(menuId);
+        console.log(`menu board now shows ${menuId || 'all menus'}`);
+        return send(res, 200, { menuId });
       }
 
       if (req.method === 'POST' && req.url === '/v1/customers') {
