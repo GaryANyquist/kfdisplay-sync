@@ -206,6 +206,11 @@ BEGIN
         delivery_phone   nvarchar(200)  NULL,
         delivery_address nvarchar(1000) NULL,
         delivery_notes   nvarchar(1000) NULL,
+        server_id        nvarchar(64)   NULL,
+        server_name      nvarchar(200)  NULL,
+        driver_id        nvarchar(64)   NULL,
+        driver_name      nvarchar(200)  NULL,
+        delivered_at     datetime2(3)   NULL,
         order_up_at      datetime2(3)   NULL,
         paged_at         datetime2(3)   NULL,
         completed_at     datetime2(3)   NULL,
@@ -317,6 +322,56 @@ BEGIN
         name        nvarchar(64)   NOT NULL PRIMARY KEY,
         value       nvarchar(max)  NULL,
         updated_at  datetime2(3)   NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+END
+GO
+
+IF OBJECT_ID(N'dbo.servers', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.servers (
+        id          nvarchar(64)   NOT NULL PRIMARY KEY,
+        name        nvarchar(200)  NOT NULL,
+        pin_hash    nvarchar(200)  NOT NULL,
+        active      int            NOT NULL DEFAULT 1,
+        created_at  nvarchar(200)  NULL,
+        updated_at  nvarchar(200)  NULL,
+        deleted_at  nvarchar(200)  NULL,
+        synced_at   datetime2(3)   NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+END
+GO
+
+IF OBJECT_ID(N'dbo.drivers', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.drivers (
+        id            nvarchar(64)   NOT NULL PRIMARY KEY,
+        name          nvarchar(200)  NOT NULL,
+        email         nvarchar(200)  NULL,
+        phone         nvarchar(200)  NULL,
+        active        int            NOT NULL DEFAULT 1,
+        has_password  int            NOT NULL DEFAULT 0,
+        created_at    nvarchar(200)  NULL,
+        updated_at    nvarchar(200)  NULL,
+        synced_at     datetime2(3)   NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+END
+GO
+
+IF OBJECT_ID(N'dbo.driver_deliveries', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.driver_deliveries (
+        id             nvarchar(64)   NOT NULL PRIMARY KEY,
+        wix_number     nvarchar(200)  NULL,
+        order_id       nvarchar(64)   NULL,
+        driver_id      nvarchar(64)   NOT NULL,
+        driver_name    nvarchar(200)  NULL,
+        delivered_at   datetime2(3)   NULL,
+        customer_name  nvarchar(200)  NULL,
+        address        nvarchar(1000) NULL,
+        total          int            NOT NULL DEFAULT 0,
+        tip            int            NOT NULL DEFAULT 0,
+        miles          float          NULL,
+        synced_at      datetime2(3)   NOT NULL DEFAULT SYSUTCDATETIME()
     );
 END
 GO
@@ -440,6 +495,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.menus TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.menu_categories TO register_sync;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.menu_items TO register_sync;
 GRANT SELECT, INSERT, UPDATE ON dbo.board_settings TO register_sync;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.servers TO register_sync;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.drivers TO register_sync;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.driver_deliveries TO register_sync;
 GO
 
-PRINT N'KFDisplay is ready: 24 tables, and register_sync can read and write them (nothing else).';
+PRINT N'KFDisplay is ready: 27 tables, and register_sync can read and write them (nothing else).';

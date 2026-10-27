@@ -79,6 +79,7 @@ export const TABLES = {
       refunded_at: T.date, refund_reason: T.long, pager_number: T.text, tender: T.text,
       processor: T.text, processor_ref: T.text, register_id: T.id,
       delivery_fee: T.int, customer_id: T.id, delivery_phone: T.text, delivery_address: T.long, delivery_notes: T.long,
+      server_id: T.id, server_name: T.text, driver_id: T.id, driver_name: T.text, delivered_at: T.date,
     },
     synced: true,
     // A sale refunded here from another register (entity order_status) stays refunded when the register that took
@@ -120,6 +121,29 @@ export const TABLES = {
     key: ['id'],
     cols: {
       id: T.id, name: T.text, phone: T.text, address: T.long, notes: T.long, created_at: T.text, updated_at: T.text,
+    },
+    synced: true,
+  },
+  // Servers who log in to a register with a PIN (register 2.10.0; the PIN only as a hash), shared like customers.
+  servers: {
+    key: ['id'],
+    cols: { id: T.id, name: T.text, pin_hash: T.text, active: T.int, created_at: T.text, updated_at: T.text },
+    synced: true,
+  },
+  // Delivery drivers (register 2.10.0), as the Wix site keeps them (it signs them in; no passwords here).
+  drivers: {
+    key: ['id'],
+    cols: {
+      id: T.id, name: T.text, email: T.text, phone: T.text, active: T.int, has_password: T.int, created_at: T.text, updated_at: T.text,
+    },
+    synced: true,
+  },
+  // Who delivered each order (from the Wix site's driver page; id = the Wix order id, order_id = the register's sale).
+  driver_deliveries: {
+    key: ['id'],
+    cols: {
+      id: T.id, wix_number: T.text, order_id: T.id, driver_id: T.id, driver_name: T.text, delivered_at: T.date,
+      customer_name: T.text, address: T.long, total: T.int, tip: T.int, miles: T.float,
     },
     synced: true,
   },
@@ -174,6 +198,7 @@ const MENU_TABLES = [
 export const ENTITIES = [
   'catalog', 'category', 'item', 'modifier_group', 'discount', 'auto_discount', 'shift', 'order',
   'settings', 'wix_links', 'kitchen_status', 'order_status', 'coupon', 'open_ticket', 'customer', 'menus',
+  'driver', 'delivery', 'server',
 ];
 
 /** Checks and converts one value; throws a message the tablet shows if it's wrong. */
@@ -246,6 +271,33 @@ function list(data, field) {
 const del = (db, sql, id) => db.exec(sql, [{ name: 'id', type: T.id, value: id }]);
 
 /**
+ * A row every register keeps a copy of and may change (customers, servers): a deletion is marked, not removed, so the
+ * other registers learn it; the newer copy wins, and saving it again after the deletion brings it back.
+ */
+function shared(db, table, op, id, row) {
+  if (op === 'delete') {
+    return del(
+      db,
+      `UPDATE dbo.${table} SET deleted_at = CONVERT(nvarchar(23), SYSUTCDATETIME(), 126) + 'Z', synced_at = SYSUTCDATETIME() WHERE id = @id;`,
+      id
+    );
+  }
+  requireKey(table, row);
+  const names = Object.keys(TABLES[table].cols);
+  const sets = names.filter((c) => c !== 'id').map((c) => `t.${c} = s.${c}`).join(', ');
+  return db.exec(
+    `MERGE dbo.${table} WITH (HOLDLOCK) AS t\n` +
+      `USING (SELECT ${names.map((c) => `@${c} AS ${c}`).join(', ')}) AS s\n` +
+      'ON t.id = s.id\n' +
+      `WHEN MATCHED AND ISNULL(s.updated_at, N'') >= ISNULL(t.updated_at, N'') THEN UPDATE SET ${sets}, ` +
+      "t.deleted_at = CASE WHEN ISNULL(s.updated_at, N'') > ISNULL(t.deleted_at, N'') THEN NULL ELSE t.deleted_at END, " +
+      't.synced_at = SYSUTCDATETIME()\n' +
+      `WHEN NOT MATCHED THEN INSERT (${names.join(', ')}) VALUES (${names.map((c) => `s.${c}`).join(', ')});`,
+    params(table, row)
+  );
+}
+
+/**
  * Applies one change. Throws if it can't; the caller rolls that change back
  * and reports it to the tablet, which retries it later.
  */
@@ -307,30 +359,23 @@ export async function applyChange(db, change) {
       return;
     }
 
-    case 'customer': {
-      // Shared between registers (register 2.9.2): a deletion is marked, not removed, so the other registers learn it;
-      // the newer copy wins, and saving it again after the deletion brings it back.
-      if (op === 'delete') {
-        return del(
-          db,
-          "UPDATE dbo.customers SET deleted_at = CONVERT(nvarchar(23), SYSUTCDATETIME(), 126) + 'Z', synced_at = SYSUTCDATETIME() WHERE id = @id;",
-          id
-        );
-      }
-      requireKey('customers', row);
-      const names = Object.keys(TABLES.customers.cols);
-      const sets = names.filter((c) => c !== 'id').map((c) => `t.${c} = s.${c}`).join(', ');
-      return db.exec(
-        `MERGE dbo.customers WITH (HOLDLOCK) AS t\n` +
-          `USING (SELECT ${names.map((c) => `@${c} AS ${c}`).join(', ')}) AS s\n` +
-          'ON t.id = s.id\n' +
-          `WHEN MATCHED AND ISNULL(s.updated_at, N'') >= ISNULL(t.updated_at, N'') THEN UPDATE SET ${sets}, ` +
-          "t.deleted_at = CASE WHEN ISNULL(s.updated_at, N'') > ISNULL(t.deleted_at, N'') THEN NULL ELSE t.deleted_at END, " +
-          't.synced_at = SYSUTCDATETIME()\n' +
-          `WHEN NOT MATCHED THEN INSERT (${names.join(', ')}) VALUES (${names.map((c) => `s.${c}`).join(', ')});`,
-        params('customers', row)
-      );
-    }
+    case 'customer':
+      // Shared between registers (register 2.9.2).
+      return shared(db, 'customers', op, id, row);
+
+    case 'server':
+      // Shared between registers like customers (register 2.10.0).
+      return shared(db, 'servers', op, id, row);
+
+    case 'driver':
+      // The Wix site keeps the drivers; every register sends the same list, so the latest copy is what is here.
+      if (op === 'delete') return del(db, 'DELETE FROM dbo.drivers WHERE id = @id;', id);
+      return upsert(db, 'drivers', row);
+
+    case 'delivery':
+      // Who delivered an order (from the Wix site); every register sends the same ones.
+      if (op === 'delete') return;
+      return upsert(db, 'driver_deliveries', row);
 
     case 'coupon':
       await del(db, 'DELETE FROM dbo.coupon_targets WHERE coupon_id = @id;', id);

@@ -495,3 +495,43 @@ test("a register reads and sets the menu board's menu", async () => {
     server.close();
   }
 });
+
+test('servers are shared like customers, drivers and deliveries are kept, and a sale carries its server and driver', async () => {
+  const db = fakeDb();
+  await applyChange(db, {
+    entity: 'server', id: 'sv_1', version: 1, op: 'upsert',
+    data: { name: 'Ann', pin_hash: 'abc', active: 1, created_at: 'a', updated_at: '2026-10-27T10:00:00.000Z' },
+  });
+  assert.match(db.calls[0].sql, /^MERGE dbo\.servers/);
+  assert.ok(db.calls[0].sql.includes('t.deleted_at = CASE'));
+  assert.equal(p(db.calls[0]).pin_hash, 'abc');
+  const gone = fakeDb();
+  await applyChange(gone, { entity: 'server', id: 'sv_1', version: 2, op: 'delete' });
+  assert.match(gone.calls[0].sql, /^UPDATE dbo\.servers SET deleted_at = /);
+
+  const d = fakeDb();
+  await applyChange(d, { entity: 'driver', id: 'dr_1', version: 1, op: 'upsert', data: { name: 'Sam', email: 'sam@x.com', phone: '', active: 1, has_password: 1, created_at: 'a', updated_at: 'b', password: 'never' } });
+  assert.match(d.calls[0].sql, /^MERGE dbo\.drivers/);
+  assert.ok(!('password' in p(d.calls[0])));
+  await applyChange(d, { entity: 'delivery', id: 'w1', version: 1, op: 'upsert', data: { order_id: 'or_1', driver_id: 'dr_1', driver_name: 'Sam', delivered_at: '2026-10-27T12:40:00.000Z', total: 1700, tip: 200, miles: 3.5 } });
+  assert.match(d.calls[1].sql, /^MERGE dbo\.driver_deliveries/);
+  assert.equal(p(d.calls[1]).miles, 3.5);
+  await applyChange(d, { entity: 'driver', id: 'dr_1', version: 2, op: 'delete' });
+  assert.match(d.calls[2].sql, /^DELETE FROM dbo\.drivers/);
+
+  for (const c of ['server_id', 'server_name', 'driver_id', 'driver_name', 'delivered_at']) assert.ok(c in TABLES.orders.cols, c);
+});
+
+test('registers list every server', async () => {
+  const key = 'test-key-that-is-long-enough-123';
+  const server = createServer({ syncKey: key }, { servers: async () => [{ id: 'sv_1', name: 'Ann', pin_hash: 'h', deleted_at: null }] });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const r = await fetch(`${base}/v1/servers`, { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: '{}' });
+    assert.deepEqual(await r.json(), { servers: [{ id: 'sv_1', name: 'Ann', pin_hash: 'h', deleted_at: null }] });
+    assert.equal((await fetch(`${base}/v1/servers`, { method: 'POST', body: '{}' })).status, 401);
+  } finally {
+    server.close();
+  }
+});

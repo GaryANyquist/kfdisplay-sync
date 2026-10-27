@@ -143,6 +143,13 @@ export async function customers(config) {
   return (r.recordset ?? []).map(({ synced_at, ...c }) => ({ deleted_at: null, ...c }));
 }
 
+/** Every register's servers (register 2.10.0), deleted ones marked. Empty on a database set up before setup 21. */
+export async function servers(config) {
+  const pool = await getPool(config);
+  const r = await pool.request().query("IF OBJECT_ID(N'dbo.servers', N'U') IS NOT NULL SELECT * FROM dbo.servers");
+  return (r.recordset ?? []).map(({ synced_at, ...s }) => ({ deleted_at: null, ...s }));
+}
+
 /**
  * The menu the KFIDisplay menu board shows (register 2.9.12, Gary 2026-10-26: set from a register): a menus.id, or ""
  * for all menus. Empty on a database set up before setup 20.

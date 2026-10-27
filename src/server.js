@@ -14,6 +14,7 @@
  *                    refunds given on another register; the register that took the sale pulls them
  *   POST /v1/open-tickets   -> { tickets: [...] }      every register's unpaid (pay later) orders
  *   POST /v1/customers      -> { customers: [...] }    every register's delivery customers (deleted ones marked)
+ *   POST /v1/servers        -> { servers: [...] }      every register's servers (PIN hashes; deleted ones marked)
  *   POST /v1/board          -> { menuId }               the menu the KFIDisplay board shows ("" = all menus)
  *   POST /v1/board/menu { menuId } -> { menuId }        sets it (from a register's Settings)
  *   POST /v1/clear-register { registerId, shiftIds } -> { orders, drawers, tickets }
@@ -31,7 +32,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 
 import { applyChange, clearRegister } from './apply.js';
-import { boardMenu, customers, databaseName, setBoardMenu, inTransaction, kitchenStatus, openTickets, orderStatus, searchOrders } from './db.js';
+import { boardMenu, customers, databaseName, servers, setBoardMenu, inTransaction, kitchenStatus, openTickets, orderStatus, searchOrders } from './db.js';
 import { imageKind, listPhotos, missingPhotos, readPhoto, savePhoto } from './photos.js';
 
 const MAX_BODY = 10 * 1024 * 1024;
@@ -91,6 +92,7 @@ export function createServer(cfg, deps = {}) {
   const statuses = deps.orderStatus ?? ((ids) => orderStatus(cfg.sql, ids));
   const tickets = deps.openTickets ?? (() => openTickets(cfg.sql));
   const people = deps.customers ?? (() => customers(cfg.sql));
+  const staff = deps.servers ?? (() => servers(cfg.sql));
   const board = deps.boardMenu ?? (() => boardMenu(cfg.sql));
   const setBoard = deps.setBoardMenu ?? ((id) => setBoardMenu(cfg.sql, id));
   const clear =
@@ -206,6 +208,10 @@ export function createServer(cfg, deps = {}) {
         await setBoard(menuId);
         console.log(`menu board now shows ${menuId || 'all menus'}`);
         return send(res, 200, { menuId });
+      }
+
+      if (req.method === 'POST' && req.url === '/v1/servers') {
+        return send(res, 200, { servers: await staff() });
       }
 
       if (req.method === 'POST' && req.url === '/v1/customers') {
