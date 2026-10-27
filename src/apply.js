@@ -127,7 +127,7 @@ export const TABLES = {
   // Servers who log in to a register with a PIN (register 2.10.0; the PIN only as a hash), shared like customers.
   servers: {
     key: ['id'],
-    cols: { id: T.id, name: T.text, pin_hash: T.text, active: T.int, created_at: T.text, updated_at: T.text },
+    cols: { id: T.id, name: T.text, pin_hash: T.text, active: T.int, admin: T.int, created_at: T.text, updated_at: T.text },
     synced: true,
   },
   // Delivery drivers (register 2.10.0), as the Wix site keeps them (it signs them in; no passwords here).
@@ -135,6 +135,7 @@ export const TABLES = {
     key: ['id'],
     cols: {
       id: T.id, name: T.text, email: T.text, phone: T.text, active: T.int, has_password: T.int, created_at: T.text, updated_at: T.text,
+      pay_per_delivery: T.int, pay_per_mile: T.int, pay_tips: T.int,
     },
     synced: true,
   },

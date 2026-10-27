@@ -333,6 +333,7 @@ BEGIN
         name        nvarchar(200)  NOT NULL,
         pin_hash    nvarchar(200)  NOT NULL,
         active      int            NOT NULL DEFAULT 1,
+        admin       int            NOT NULL DEFAULT 0,
         created_at  nvarchar(200)  NULL,
         updated_at  nvarchar(200)  NULL,
         deleted_at  nvarchar(200)  NULL,
@@ -352,6 +353,9 @@ BEGIN
         has_password  int            NOT NULL DEFAULT 0,
         created_at    nvarchar(200)  NULL,
         updated_at    nvarchar(200)  NULL,
+        pay_per_delivery int         NOT NULL DEFAULT 0,
+        pay_per_mile  int            NOT NULL DEFAULT 0,
+        pay_tips      int            NOT NULL DEFAULT 1,
         synced_at     datetime2(3)   NOT NULL DEFAULT SYSUTCDATETIME()
     );
 END
